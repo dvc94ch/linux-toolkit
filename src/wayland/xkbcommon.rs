@@ -1,5 +1,5 @@
-use std::fs::File;
-use xkbcommon::xkb::{Context, Keymap, KeymapFormat, State};
+use std::os::unix::io::RawFd;
+use xkbcommon::xkb::{Context, Keymap, KeymapFormat, State, Keycode, KeyDirection};
 use xkbcommon::xkb::{CONTEXT_NO_FLAGS, KEYMAP_COMPILE_NO_FLAGS};
 use xkbcommon::xkb::compose::{Table as ComposeTable, State as ComposeState};
 use xkbcommon::xkb::compose::{COMPILE_NO_FLAGS, STATE_NO_FLAGS};
@@ -37,14 +37,16 @@ impl KbState {
         }
     }
 
-    pub fn load_keymap_from_file(
+    pub fn load_keymap_from_fd(
         &mut self,
         format: KeymapFormat,
-        mut file: File,
+        fd: RawFd,
+        size: usize,
     ) {
-        let keymap = Keymap::new_from_file(
+        let keymap = Keymap::new_from_fd(
             &self.context,
-            &mut file,
+            fd,
+            size,
             format,
             KEYMAP_COMPILE_NO_FLAGS,
         ).unwrap();
@@ -65,6 +67,10 @@ impl KbState {
         group: u32,
     ) {
 
+    }
+
+    pub fn key(&mut self, rawkey: Keycode, state: KeyDirection) {
+        self.state.as_mut().unwrap().update_key(rawkey, state);
     }
 }
 

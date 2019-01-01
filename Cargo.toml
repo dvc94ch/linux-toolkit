@@ -22,4 +22,4 @@ features = ["client", "unstable_protocols"]
 [dependencies.xkbcommon]
 version = "*"
 path = "../xkbcommon-rs"
-features = ["compose"]
+features = ["compose", "wayland"]
