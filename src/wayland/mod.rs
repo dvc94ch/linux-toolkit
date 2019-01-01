@@ -9,6 +9,7 @@ pub mod seat;
 pub mod shm;
 pub mod surface;
 pub mod touch;
+pub mod xkbcommon;
 pub mod xdg_shell;
 
 pub use wayland_client::Proxy;

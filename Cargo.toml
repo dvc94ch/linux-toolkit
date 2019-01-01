@@ -10,11 +10,16 @@ memmap = "*"
 nix = "*"
 rand = "*"
 
+[dependencies.wayland-client]
+version = "*"
+path = "../wayland-rs/wayland-client"
+
 [dependencies.wayland-protocols]
 version = "*"
 path = "../wayland-rs/wayland-protocols"
 features = ["client", "unstable_protocols"]
 
-[dependencies.wayland-client]
+[dependencies.xkbcommon]
 version = "*"
-path = "../wayland-rs/wayland-client"
+path = "../xkbcommon-rs"
+features = ["compose"]
