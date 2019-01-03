@@ -73,11 +73,11 @@ fn main() {
                     surface_scale_factor = scale_factor;
                     xdg_surface.surface().set_buffer_scale(scale_factor as i32);
                 }
-                XdgSurfaceEvent::Pointer { event: _ } => {
-                    println!("pointer event");
+                XdgSurfaceEvent::Pointer { event } => {
+                    println!("{:?}", event);
                 }
-                XdgSurfaceEvent::Keyboard { event: _ } => {
-                    println!("keyboard event");
+                XdgSurfaceEvent::Keyboard { event } => {
+                    println!("{:?}", event);
                 }
                 XdgSurfaceEvent::Touch { event: _ } => {
                     println!("touch event");
