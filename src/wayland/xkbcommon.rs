@@ -1,19 +1,21 @@
 use std::os::unix::io::RawFd;
 use xkbcommon::xkb::{Context, Keymap, State};
 pub use xkbcommon::xkb::{Keycode, Keysym};
-use xkbcommon::xkb::KEYMAP_FORMAT_TEXT_V1;
+use xkbcommon::xkb::{KEYMAP_FORMAT_TEXT_V1, STATE_MODS_EFFECTIVE};
 use xkbcommon::xkb::{CONTEXT_NO_FLAGS, KEYMAP_COMPILE_NO_FLAGS};
+use xkbcommon::xkb::{MOD_NAME_SHIFT, MOD_NAME_CAPS, MOD_NAME_CTRL, MOD_NAME_ALT,
+                     MOD_NAME_NUM, MOD_NAME_LOGO};
 use xkbcommon::xkb::compose::{Table as ComposeTable, State as ComposeState};
 use xkbcommon::xkb::compose::{COMPILE_NO_FLAGS, STATE_NO_FLAGS};
+use xkbcommon::xkb::compose::{FeedResult, Status as ComposeStatus};
 use crate::locale::get_locale_ctype;
 
 pub struct KbState {
     context: Context,
     keymap: Option<Keymap>,
     state: Option<State>,
-    compose_table: ComposeTable,
+    _compose_table: ComposeTable,
     compose_state: ComposeState,
-    modifiers_state: ModifiersState,
     repeat_info: Option<RepeatInfo>,
 }
 
@@ -27,14 +29,12 @@ impl KbState {
             COMPILE_NO_FLAGS,
         ).unwrap();
         let compose_state = ComposeState::new(&compose_table, STATE_NO_FLAGS);
-        let modifiers_state = ModifiersState::new();
         KbState {
             context,
             keymap: None,
             state: None,
-            compose_table,
+            _compose_table: compose_table,
             compose_state,
-            modifiers_state,
             repeat_info: None,
         }
     }
@@ -75,16 +75,33 @@ impl KbState {
             0,
             group,
         );
-        // TODO update modifiers_state
-        self.modifiers_state.clone()
+        ModifiersState::from_xkb_state(&self.state.as_ref().unwrap())
     }
 
     pub fn get_sym(&mut self, rawkey: Keycode) -> Keysym {
         self.state.as_mut().unwrap().key_get_one_sym(rawkey + 8)
     }
 
-    pub fn get_utf8(&mut self, rawkey: Keycode) -> String {
-        self.state.as_mut().unwrap().key_get_utf8(rawkey + 8)
+    pub fn get_utf8(&mut self, rawkey: Keycode) -> Option<String> {
+        let utf8 = self.state.as_mut().unwrap().key_get_utf8(rawkey + 8);
+        if utf8.is_empty() {
+            None
+        } else {
+            Some(utf8)
+        }
+    }
+
+    pub fn compose(&mut self, keysym: Keysym) -> Option<Option<String>> {
+        match self.compose_state.feed(keysym) {
+            FeedResult::Accepted => {
+                match self.compose_state.status() {
+                    ComposeStatus::Nothing => None,
+                    ComposeStatus::Composed => Some(self.compose_state.utf8()),
+                    _ => Some(None),
+                }
+            },
+            FeedResult::Ignored => None,
+        }
     }
 }
 
@@ -115,8 +132,33 @@ pub struct ModifiersState {
 }
 
 impl ModifiersState {
-    pub fn new() -> Self {
-        ModifiersState::default()
+    pub fn from_xkb_state(state: &State) -> ModifiersState {
+        ModifiersState {
+            ctrl: state.mod_name_is_active(
+                &MOD_NAME_CTRL,
+                STATE_MODS_EFFECTIVE,
+            ),
+            alt: state.mod_name_is_active(
+                &MOD_NAME_ALT,
+                STATE_MODS_EFFECTIVE,
+            ),
+            shift: state.mod_name_is_active(
+                &MOD_NAME_SHIFT,
+                STATE_MODS_EFFECTIVE,
+            ),
+            caps_lock: state.mod_name_is_active(
+                &MOD_NAME_CAPS,
+                STATE_MODS_EFFECTIVE,
+            ),
+            logo: state.mod_name_is_active(
+                &MOD_NAME_LOGO,
+                STATE_MODS_EFFECTIVE,
+            ),
+            num_lock: state.mod_name_is_active(
+                &MOD_NAME_NUM,
+                STATE_MODS_EFFECTIVE,
+            ),
+        }
     }
 }
 

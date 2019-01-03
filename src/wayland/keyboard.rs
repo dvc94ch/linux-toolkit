@@ -10,7 +10,6 @@ use crate::wayland::surface::{SurfaceEvent, SurfaceUserData};
 use crate::wayland::xkbcommon::KbState;
 pub use crate::wayland::xkbcommon::{Keycode, Keysym, ModifiersState};
 
-// TODO map keyboard auto with repeat
 pub fn implement_keyboard(keyboard: NewProxy<WlKeyboard>) -> Proxy<WlKeyboard> {
     let mut event_source: Option<EventSource<SurfaceEvent>> = None;
     let mut kb_state = KbState::new();
@@ -86,11 +85,12 @@ pub fn implement_keyboard(keyboard: NewProxy<WlKeyboard>) -> Proxy<WlKeyboard> {
                 let keysym = kb_state.get_sym(rawkey);
                 let utf8 = match state {
                     KeyState::Pressed => {
-                        Some(kb_state.get_utf8(rawkey))
+                        kb_state.compose(keysym).unwrap_or_else(|| {
+                            kb_state.get_utf8(rawkey)
+                        })
                     }
                     KeyState::Released => None
                 };
-                // TODO handle compose
                 // TODO start repeat thread
                 let event = SurfaceEvent::Keyboard {
                     event: KeyboardEvent::Key {
