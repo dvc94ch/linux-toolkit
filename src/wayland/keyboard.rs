@@ -1,7 +1,4 @@
 use std::sync::Mutex;
-use xkbcommon::xkb::KEYMAP_FORMAT_TEXT_V1;
-pub use xkbcommon::xkb::{Keysym, KeyDirection};
-
 use wayland_client::{Proxy, NewProxy};
 pub use wayland_client::protocol::wl_keyboard::WlKeyboard;
 pub use wayland_client::protocol::wl_keyboard::RequestsTrait as KeyboardRequests;
@@ -9,9 +6,9 @@ pub use wayland_client::protocol::wl_keyboard::KeyState;
 use wayland_client::protocol::wl_keyboard::Event;
 use wayland_client::protocol::wl_keyboard::KeymapFormat;
 use crate::wayland::event_queue::EventSource;
-use crate::wayland::surface::{WlSurface, SurfaceEvent, SurfaceUserData};
+use crate::wayland::surface::{SurfaceEvent, SurfaceUserData};
 use crate::wayland::xkbcommon::KbState;
-pub use crate::wayland::xkbcommon::ModifiersState;
+pub use crate::wayland::xkbcommon::{Keycode, Keysym, ModifiersState};
 
 // TODO map keyboard auto with repeat
 pub fn implement_keyboard(keyboard: NewProxy<WlKeyboard>) -> Proxy<WlKeyboard> {
@@ -21,13 +18,9 @@ pub fn implement_keyboard(keyboard: NewProxy<WlKeyboard>) -> Proxy<WlKeyboard> {
     keyboard.implement(move |event, _keyboard| {
         match event.clone() {
             Event::Keymap { format, fd, size } => {
-                let format = match format {
-                    KeymapFormat::XkbV1 => KEYMAP_FORMAT_TEXT_V1,
-                    KeymapFormat::NoKeymap => {
-                        panic!("Compositor did not send a keymap.");
-                    }
-                };
-                kb_state.load_keymap_from_fd(format, fd, size as usize);
+                if KeymapFormat::XkbV1 == format {
+                    kb_state.load_keymap_from_fd(fd, size as usize);
+                }
             },
             Event::RepeatInfo { rate, delay } => {
                 kb_state.set_repeat_info(rate as u32, delay as u32);
@@ -39,68 +32,93 @@ pub fn implement_keyboard(keyboard: NewProxy<WlKeyboard>) -> Proxy<WlKeyboard> {
                 group,
                 serial: _,
             } => {
-                // TODO update modifiers
-                kb_state.set_modifiers(
+                let modifiers = kb_state.update_modifiers(
                     mods_depressed,
                     mods_latched,
                     mods_locked,
                     group,
                 );
+                let event = SurfaceEvent::Keyboard {
+                    event: KeyboardEvent::Modifiers {
+                        modifiers
+                    }
+                };
+                event_source.as_ref().unwrap().push_event(event);
             },
             Event::Enter {
                 surface,
                 serial: _,
-                keys: _,
+                keys,
             } => {
-                // TODO pass keys to xkb state
+                let rawkeys: Vec<Keycode> = unsafe {
+                    ::std::slice::from_raw_parts(
+                        keys.as_ptr() as *const u32,
+                        keys.len() / 4,
+                    ).to_vec()
+                };
+                let keysyms: Vec<Keysym> = rawkeys
+                    .iter()
+                    .map(|rawkey| kb_state.get_sym(*rawkey))
+                    .collect();
+
                 let user_data = surface
                     .user_data::<Mutex<SurfaceUserData>>()
                     .unwrap()
                     .lock()
                     .unwrap();
                 event_source = Some(user_data.event_source.clone());
-                //let event = SurfaceEvent::Keyboard { event };
-                //event_source.as_ref().unwrap().push_event(event);
+                let event = SurfaceEvent::Keyboard {
+                    event: KeyboardEvent::Enter {
+                        rawkeys,
+                        keysyms,
+                    }
+                };
+                event_source.as_ref().unwrap().push_event(event);
             },
             Event::Leave { surface: _, serial: _ } => {
                 // TODO abort repeat
-                // TODO send release events
-                //let event = SurfaceEvent::Keyboard { event };
-                //event_source.take().unwrap().push_event(event);
+                let event = SurfaceEvent::Keyboard {
+                    event: KeyboardEvent::Leave
+                };
+                event_source.take().unwrap().push_event(event);
             },
-            Event::Key { serial: _, time: _, key, state } => {
-                // TODO pass key to xkb state
+            Event::Key { serial: _, time, key: rawkey, state } => {
+                let keysym = kb_state.get_sym(rawkey);
+                let utf8 = match state {
+                    KeyState::Pressed => {
+                        Some(kb_state.get_utf8(rawkey))
+                    }
+                    KeyState::Released => None
+                };
                 // TODO handle compose
                 // TODO start repeat thread
-                let dir = match state {
-                    KeyState::Pressed => KeyDirection::Down,
-                    KeyState::Released => KeyDirection::Up,
+                let event = SurfaceEvent::Keyboard {
+                    event: KeyboardEvent::Key {
+                        rawkey,
+                        keysym,
+                        state,
+                        utf8,
+                        time,
+                    }
                 };
-                kb_state.key(key, dir);
-                //let event = SurfaceEvent::Keyboard { event };
-                //event_source.as_ref().unwrap().push_event(event);
+                event_source.as_ref().unwrap().push_event(event);
             }
         }
     }, ())
 }
 
 /// Events received from a mapped keyboard
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum KeyboardEvent {
     /// The keyboard focus has entered a surface
     Enter {
-        /// surface that was entered
-        surface: Proxy<WlSurface>,
         /// raw values of the currently pressed keys
-        rawkeys: Vec<u32>,
+        rawkeys: Vec<Keycode>,
         /// interpreted symbols of the currently pressed keys
         keysyms: Vec<Keysym>,
     },
     /// The keyboard focus has left a surface
-    Leave {
-        /// surface that was left
-        surface: Proxy<WlSurface>,
-    },
+    Leave,
     /// A key event occurred
     Key {
         /// time at which the keypress occurred
@@ -115,8 +133,8 @@ pub enum KeyboardEvent {
         ///
         /// will always be `None` on key release events
         utf8: Option<String>,
-        /// physical or emulated keypress due to repeat info
-        r#virtual: bool,
+        // physical or emulated keypress due to repeat info
+        //is_repeat: bool,
     },
     /// Repetition information advertising
     RepeatInfo {

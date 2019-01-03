@@ -1,5 +1,7 @@
 use std::os::unix::io::RawFd;
-use xkbcommon::xkb::{Context, Keymap, KeymapFormat, State, Keycode, KeyDirection};
+use xkbcommon::xkb::{Context, Keymap, State};
+pub use xkbcommon::xkb::{Keycode, Keysym};
+use xkbcommon::xkb::KEYMAP_FORMAT_TEXT_V1;
 use xkbcommon::xkb::{CONTEXT_NO_FLAGS, KEYMAP_COMPILE_NO_FLAGS};
 use xkbcommon::xkb::compose::{Table as ComposeTable, State as ComposeState};
 use xkbcommon::xkb::compose::{COMPILE_NO_FLAGS, STATE_NO_FLAGS};
@@ -39,7 +41,6 @@ impl KbState {
 
     pub fn load_keymap_from_fd(
         &mut self,
-        format: KeymapFormat,
         fd: RawFd,
         size: usize,
     ) {
@@ -47,7 +48,7 @@ impl KbState {
             &self.context,
             fd,
             size,
-            format,
+            KEYMAP_FORMAT_TEXT_V1,
             KEYMAP_COMPILE_NO_FLAGS,
         ).unwrap();
         let state = State::new(&keymap);
@@ -59,18 +60,31 @@ impl KbState {
         self.repeat_info = Some(RepeatInfo::new(rate, delay));
     }
 
-    pub fn set_modifiers(
+    pub fn update_modifiers(
         &mut self,
         mods_depressed: u32,
         mods_latched: u32,
         mods_locked: u32,
         group: u32,
-    ) {
-
+    ) -> ModifiersState {
+        self.state.as_mut().unwrap().update_mask(
+            mods_depressed,
+            mods_latched,
+            mods_locked,
+            0,
+            0,
+            group,
+        );
+        // TODO update modifiers_state
+        self.modifiers_state.clone()
     }
 
-    pub fn key(&mut self, rawkey: Keycode, state: KeyDirection) {
-        self.state.as_mut().unwrap().update_key(rawkey, state);
+    pub fn get_sym(&mut self, rawkey: Keycode) -> Keysym {
+        self.state.as_mut().unwrap().key_get_one_sym(rawkey + 8)
+    }
+
+    pub fn get_utf8(&mut self, rawkey: Keycode) -> String {
+        self.state.as_mut().unwrap().key_get_utf8(rawkey + 8)
     }
 }
 
