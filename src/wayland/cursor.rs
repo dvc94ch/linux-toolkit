@@ -56,8 +56,8 @@ impl CursorTheme {
     }
 }
 
-#[derive(Clone)]
-pub struct Cursor {
+struct CursorInner {
+    pointer: Option<Proxy<WlPointer>>,
     surface: Proxy<WlSurface>,
     theme: Arc<Mutex<Option<CursorTheme>>>,
     cursor_name: String,
@@ -66,8 +66,8 @@ pub struct Cursor {
     hy: i32,
 }
 
-impl Cursor {
-    pub fn new(
+impl CursorInner {
+    fn new(
         compositor: &Proxy<WlCompositor>,
         theme: Arc<Mutex<Option<CursorTheme>>>,
         cursor_name: Option<String>,
@@ -76,7 +76,8 @@ impl Cursor {
             surface.implement(|_, _| {}, ())
         }).unwrap();
         let cursor_name = cursor_name.unwrap_or_else(|| "left_ptr".into());
-        let mut cursor = Cursor {
+        let mut cursor = CursorInner {
+            pointer: None,
             surface,
             theme,
             cursor_name,
@@ -88,19 +89,19 @@ impl Cursor {
         Ok(cursor)
     }
 
-    pub fn enter_surface(&mut self, pointer: &Proxy<WlPointer>, serial: u32) {
+    fn enter_surface(&mut self, pointer: Proxy<WlPointer>, serial: u32) {
         self.enter_serial = serial;
-        self.set_cursor(pointer);
+        self.pointer = Some(pointer);
+        self.set_cursor();
     }
 
-    pub fn change_cursor(
-        &mut self,
-        pointer: &Proxy<WlPointer>,
-        cursor_name: Option<String>,
-    ) -> Result<(), ()> {
-        self.cursor_name = cursor_name.unwrap_or_else(|| "left_ptr".into());
-        self.load_cursor()?;
-        self.set_cursor(pointer);
+    fn change_cursor(&mut self, cursor_name: Option<String>) -> Result<(), ()> {
+        let new_cursor_name = cursor_name.unwrap_or_else(|| "left_ptr".into());
+        if self.cursor_name != new_cursor_name {
+            self.cursor_name = new_cursor_name;
+            self.load_cursor()?;
+        }
+        self.set_cursor();
         Ok(())
     }
 
@@ -114,26 +115,83 @@ impl Cursor {
             .get_cursor(&self.cursor_name)
             .ok_or(())?;
         let buffer = cursor.frame_buffer(0).ok_or(())?;
-        let (hx, hy) = cursor
+        let (w, h, hx, hy) = cursor
             .frame_info(0)
-            .map(|(_w, _h, hx, hy, _)| (hx as i32, hy as i32))
-            .unwrap_or((0, 0));
+            .map(|(w, h, hx, hy, _)| (w as i32, h as i32, hx as i32, hy as i32))
+            .unwrap_or((0, 0, 0, 0));
         self.hx = hx;
         self.hy = hy;
 
         self.surface.attach(Some(&buffer), 0, 0);
         self.surface.set_buffer_scale(theme_ref.scale_factor() as i32);
+        if self.surface.version() >= 4 {
+            self.surface.damage_buffer(0, 0, w, h);
+        } else {
+            // surface is old and does not support damage_buffer, so we damage
+            // in surface coordinates and hope it is not rescaled
+            self.surface.damage(0, 0, w, h);
+        }
         self.surface.commit();
         Ok(())
     }
 
-    fn set_cursor(&self, pointer: &Proxy<WlPointer>) {
-        pointer.set_cursor(
+    fn set_cursor(&self) {
+        self.pointer.as_ref().unwrap().set_cursor(
             self.enter_serial,
             Some(&self.surface),
             self.hx,
             self.hy,
         )
+    }
+}
+
+#[derive(Clone)]
+pub struct Cursor {
+    inner: Arc<Mutex<CursorInner>>,
+}
+
+impl Cursor {
+    pub fn new(
+        compositor: &Proxy<WlCompositor>,
+        theme: Arc<Mutex<Option<CursorTheme>>>,
+        cursor_name: Option<String>,
+    ) -> Result<Self, ()> {
+        let inner = CursorInner::new(compositor, theme, cursor_name)?;
+        Ok(Cursor {
+            inner: Arc::new(Mutex::new(inner)),
+        })
+    }
+
+    pub fn enter_surface(&self, pointer: Proxy<WlPointer>, serial: u32) {
+        let mut cursor = self.inner.lock().unwrap();
+        cursor.enter_surface(pointer, serial);
+    }
+
+    pub fn change_cursor(&self, cursor_name: Option<String>) -> Result<(), ()> {
+        let mut cursor = self.inner.lock().unwrap();
+        cursor.change_cursor(cursor_name)
+    }
+
+    pub fn set_cursor(&self) {
+        let cursor = self.inner.lock().unwrap();
+        cursor.set_cursor();
+    }
+
+    fn load_cursor(&self) -> Result<(), ()> {
+        let mut cursor = self.inner.lock().unwrap();
+        cursor.load_cursor()
+    }
+}
+
+impl PartialEq for Cursor {
+    fn eq(&self, other: &Cursor) -> bool {
+        Arc::ptr_eq(&self.inner, &other.inner)
+    }
+}
+
+impl std::fmt::Debug for Cursor {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+       write!(fmt, "Cursor")
     }
 }
 
@@ -169,10 +227,7 @@ impl CursorManager {
         }
     }
 
-    pub fn get_cursor(
-        &self,
-        cursor_name: Option<String>,
-    ) -> Cursor {
+    pub fn new_cursor(&self, cursor_name: Option<String>) -> Cursor {
         let cursor = Cursor::new(
             &self.compositor,
             self.theme.clone(),
@@ -181,6 +236,17 @@ impl CursorManager {
         let mut cursors = self.cursors.lock().unwrap();
         cursors.push(cursor.clone());
         cursor
+    }
+
+    pub fn remove_cursor(&self, cursor: &Cursor) {
+        let mut cursors = self.cursors.lock().unwrap();
+        cursors.retain(|cursor2| {
+            cursor != cursor2
+        });
+    }
+
+    pub fn cursors(&self) -> &Arc<Mutex<Vec<Cursor>>> {
+        &self.cursors
     }
 
     pub fn handle_events(&mut self) {
@@ -214,6 +280,10 @@ impl CursorManager {
                 self.theme_name.as_ref(),
                 self.scale_factor,
             ).ok();
+            let mut cursors = self.cursors.lock().unwrap();
+            for cursor in cursors.iter_mut() {
+                cursor.load_cursor().unwrap();
+            }
         }
     }
 }

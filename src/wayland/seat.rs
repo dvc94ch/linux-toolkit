@@ -53,8 +53,7 @@ impl SeatManager {
                         Event::Capabilities { capabilities } => {
                             if capabilities.contains(Capability::Pointer) {
                                 user_data.pointer = seat.get_pointer(|pointer| {
-                                    let cursor = cursor_manager.get_cursor(None);
-                                    implement_pointer(pointer, cursor)
+                                    implement_pointer(pointer, cursor_manager.clone())
                                 }).ok();
                             } else {
                                 if user_data.pointer.is_some() {

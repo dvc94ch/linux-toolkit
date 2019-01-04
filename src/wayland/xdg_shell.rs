@@ -119,7 +119,7 @@ impl XdgShellSurface {
     pub fn poll_events<F: FnMut(XdgSurfaceEvent, &XdgShellSurface)>(&self, mut cb: F) {
         {
             let surface_user_data = self.surface
-            .user_data::<Mutex<SurfaceUserData>>()
+                .user_data::<Mutex<SurfaceUserData>>()
                 .unwrap()
                 .lock()
                 .unwrap();

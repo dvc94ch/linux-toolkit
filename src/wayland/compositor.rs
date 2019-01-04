@@ -4,7 +4,7 @@ pub use wayland_client::protocol::wl_compositor::RequestsTrait as CompositorRequ
 pub use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
 pub use wayland_client::protocol::wl_subcompositor::RequestsTrait as SubcompositorRequests;
 
-pub fn initialize_compositor(globals: &GlobalManager) -> Proxy<WlCompositor> {
+pub(crate) fn initialize_compositor(globals: &GlobalManager) -> Proxy<WlCompositor> {
     globals
         .instantiate_auto(|compositor| {
             compositor.implement(|event, _compositor| match event {}, ())
@@ -12,7 +12,7 @@ pub fn initialize_compositor(globals: &GlobalManager) -> Proxy<WlCompositor> {
         .expect("Server didn't advertise `wl_compositor`")
 }
 
-pub fn initialize_subcompositor(globals: &GlobalManager) -> Proxy<WlSubcompositor> {
+pub(crate) fn initialize_subcompositor(globals: &GlobalManager) -> Proxy<WlSubcompositor> {
     globals
         .instantiate_auto(|subcompositor| {
             subcompositor.implement(|event, _subcompositor| match event {}, ())

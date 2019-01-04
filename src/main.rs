@@ -5,6 +5,7 @@ use linux_toolkit::wayland::Proxy;
 use linux_toolkit::wayland::environment::Environment;
 use linux_toolkit::wayland::mem_pool::{DoubleMemPool, MemPool};
 use linux_toolkit::wayland::output::OutputUserData;
+use linux_toolkit::wayland::pointer::PointerEvent;
 use linux_toolkit::wayland::seat::SeatUserData;
 use linux_toolkit::wayland::shm::Format;
 use linux_toolkit::wayland::surface::{WlSurface, SurfaceRequests};
@@ -49,43 +50,57 @@ fn main() {
     let xdg_surface = xdg_shell.create_shell_surface();
 
     let mut close = false;
-    let mut surface_size = (1024, 768);
+    let mut configure = false;
+    let mut resize = true;
+    let mut surface_size = None;
     let mut surface_scale_factor = 1;
 
     loop {
-        xdg_surface.poll_events(|event, xdg_surface| {
+        xdg_surface.poll_events(|event, _xdg_surface| {
             match event {
                 XdgSurfaceEvent::Close => {
                     close = true;
                 }
                 XdgSurfaceEvent::Configure { size, .. } => {
-                    surface_size = size.unwrap_or(surface_size);
-                    if let Some(pool) = pools.pool() {
-                        redraw(
-                            pool,
-                            xdg_surface.surface(),
-                            surface_size,
-                            surface_scale_factor,
-                        ).unwrap();
+                    configure = true;
+                    if surface_size != size {
+                        surface_size = size;
+                        resize = true;
                     }
                 }
                 XdgSurfaceEvent::Scale { scale_factor } => {
-                    surface_scale_factor = scale_factor;
-                    xdg_surface.surface().set_buffer_scale(scale_factor as i32);
+                    if scale_factor != surface_scale_factor {
+                        surface_scale_factor = scale_factor;
+                        resize = true;
+                    }
                 }
                 XdgSurfaceEvent::Pointer { event } => {
-                    println!("{:?}", event);
+                    if let PointerEvent::Enter { ref cursor, .. } = event {
+                        cursor.change_cursor(Some("grabbing".into())).unwrap();
+                    }
+                    //println!("{:?}", event);
                 }
                 XdgSurfaceEvent::Keyboard { event } => {
-                    println!("{:?}", event);
+                    //println!("{:?}", event);
                 }
-                XdgSurfaceEvent::Touch { event: _ } => {
-                    println!("touch event");
+                XdgSurfaceEvent::Touch { event } => {
+                    //println!("{:?}", event);
                 }
             }
         });
         if close {
             break;
+        }
+        if configure && resize {
+            if let Some(pool) = pools.pool() {
+                redraw(
+                    pool,
+                    xdg_surface.surface(),
+                    surface_size,
+                    surface_scale_factor,
+                ).unwrap();
+            }
+            resize = false;
         }
         environment.handle_events();
     }
@@ -94,9 +109,10 @@ fn main() {
 fn redraw(
     pool: &mut MemPool,
     surface: &Proxy<WlSurface>,
-    size: (u32, u32),
+    size: Option<(u32, u32)>,
     scale_factor: u32,
 ) -> Result<(), Error> {
+    let size = size.unwrap_or((1024, 768));
     let (width, height) = (size.0 * scale_factor, size.1 * scale_factor);
 
     pool.resize((4 * width * height) as usize)?;

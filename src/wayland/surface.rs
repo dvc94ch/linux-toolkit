@@ -70,7 +70,7 @@ impl SurfaceManager {
             .unwrap()
     }
 
-    pub fn handle_events(&self) {
+    pub(crate) fn handle_events(&self) {
         let surfaces = self.surfaces.lock().unwrap();
         self.event_drain.poll_events(|event| {
             match event {
@@ -100,7 +100,7 @@ impl SurfaceManager {
 }
 
 pub struct SurfaceUserData {
-    pub event_source: EventSource<SurfaceEvent>,
+    pub(crate) event_source: EventSource<SurfaceEvent>,
     event_drain: EventDrain<SurfaceEvent>,
     scale_factor: u32,
     outputs: Vec<Proxy<WlOutput>>,
@@ -117,17 +117,17 @@ impl SurfaceUserData {
         }
     }
 
-    pub fn enter(&mut self, output: Proxy<WlOutput>) {
+    pub(crate) fn enter(&mut self, output: Proxy<WlOutput>) {
         self.outputs.push(output);
         self.update_scale_factor();
     }
 
-    pub fn leave(&mut self, output: &Proxy<WlOutput>) {
+    pub(crate) fn leave(&mut self, output: &Proxy<WlOutput>) {
         self.outputs.retain(|output2| !output.equals(output2));
         self.update_scale_factor();
     }
 
-    pub fn update_scale_factor(&mut self) {
+    pub(crate) fn update_scale_factor(&mut self) {
         let mut scale_factor = 1;
         for output in &self.outputs {
             let user_data = output
