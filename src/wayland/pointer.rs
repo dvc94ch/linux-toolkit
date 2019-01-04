@@ -4,25 +4,36 @@ pub use wayland_client::protocol::wl_pointer::WlPointer;
 pub use wayland_client::protocol::wl_pointer::RequestsTrait as PointerRequests;
 use wayland_client::protocol::wl_pointer::Event;
 pub use wayland_client::protocol::wl_pointer::ButtonState;
+use crate::wayland::cursor::Cursor;
 use crate::wayland::event_queue::EventSource;
 use crate::wayland::surface::{SurfaceEvent, SurfaceUserData};
 
-pub fn implement_pointer(pointer: NewProxy<WlPointer>) -> Proxy<WlPointer> {
+pub fn implement_pointer(
+    pointer: NewProxy<WlPointer>,
+    cursor: Cursor,
+) -> Proxy<WlPointer> {
     let mut event_source: Option<EventSource<SurfaceEvent>> = None;
-    pointer.implement(move |event, _pointer| {
+    pointer.implement(move |event, pointer| {
         match event.clone() {
             Event::Enter {
                 surface,
                 surface_x: x,
                 surface_y: y,
-                serial: _,
+                serial,
             } => {
-                let user_data = surface
+                let mut pointer_user_data = pointer
+                    .user_data::<Mutex<PointerUserData>>()
+                    .unwrap()
+                    .lock()
+                    .unwrap();
+                pointer_user_data.cursor.enter_surface(&pointer, serial);
+
+                let surface_user_data = surface
                     .user_data::<Mutex<SurfaceUserData>>()
                     .unwrap()
                     .lock()
                     .unwrap();
-                event_source = Some(user_data.event_source.clone());
+                event_source = Some(surface_user_data.event_source.clone());
                 let event = SurfaceEvent::Pointer {
                     event: PointerEvent::Enter { x, y }
                 };
@@ -62,7 +73,7 @@ pub fn implement_pointer(pointer: NewProxy<WlPointer>) -> Proxy<WlPointer> {
             //PointerEvent::Frame {} => {},
             _ => {},
         }
-    }, ())
+    }, Mutex::new(PointerUserData::new(cursor)))
 }
 
 #[derive(Clone, Debug)]
@@ -73,4 +84,14 @@ pub enum PointerEvent {
     Motion { x: f64, y: f64, time: u32 },
 }
 
-// TODO handle cursor
+pub struct PointerUserData {
+    cursor: Cursor,
+}
+
+impl PointerUserData {
+    pub fn new(cursor: Cursor) -> Self {
+        PointerUserData {
+            cursor
+        }
+    }
+}

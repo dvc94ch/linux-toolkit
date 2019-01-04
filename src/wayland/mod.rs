@@ -1,3 +1,4 @@
+pub mod compositor;
 pub mod cursor;
 pub mod data_device;
 pub mod environment;

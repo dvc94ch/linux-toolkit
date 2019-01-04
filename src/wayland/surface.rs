@@ -1,14 +1,12 @@
 use std::sync::{Arc, Mutex};
-use wayland_client::{GlobalManager, Proxy};
-use wayland_client::protocol::wl_compositor::WlCompositor;
-use wayland_client::protocol::wl_compositor::RequestsTrait as CompositorRequests;
-use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
-use wayland_client::protocol::wl_subcompositor::RequestsTrait as SubcompositorRequests;
+use wayland_client::Proxy;
 pub use wayland_client::protocol::wl_surface::WlSurface;
 pub use wayland_client::protocol::wl_surface::RequestsTrait as SurfaceRequests;
 pub use wayland_client::protocol::wl_subsurface::WlSubsurface;
 pub use wayland_client::protocol::wl_subsurface::RequestsTrait as SubsurfaceRequests;
 use wayland_client::protocol::wl_surface::Event;
+use crate::wayland::compositor::{WlCompositor, CompositorRequests};
+use crate::wayland::compositor::{WlSubcompositor, SubcompositorRequests};
 use crate::wayland::event_queue::{EventQueue, EventSource, EventDrain};
 use crate::wayland::keyboard::KeyboardEvent;
 use crate::wayland::output::{WlOutput, OutputUserData};
@@ -25,21 +23,10 @@ pub struct SurfaceManager {
 
 impl SurfaceManager {
     pub fn new(
-        globals: &GlobalManager,
         event_drain: EventDrain<SurfaceManagerEvent>,
+        compositor: Proxy<WlCompositor>,
+        subcompositor: Proxy<WlSubcompositor>,
     ) -> Self {
-        let compositor = globals
-            .instantiate_auto(|compositor| {
-                compositor.implement(|event, _compositor| match event {}, ())
-            })
-            .expect("Server didn't advertise `wl_compositor`");
-
-        let subcompositor = globals
-            .instantiate_auto(|subcompositor| {
-                subcompositor.implement(|event, _subcompositor| match event {}, ())
-            })
-            .expect("Server didn't advertise `wl_subcompositor`");
-
         SurfaceManager {
             event_drain,
             compositor,

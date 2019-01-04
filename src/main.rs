@@ -11,7 +11,7 @@ use linux_toolkit::wayland::surface::{WlSurface, SurfaceRequests};
 use linux_toolkit::wayland::xdg_shell::{XdgShell, XdgSurfaceEvent};
 
 fn main() {
-    let mut environment = Environment::initialize().unwrap();
+    let mut environment = Environment::initialize(None).unwrap();
     let globals = environment.globals.clone();
     let mut pools = DoubleMemPool::new(&environment.shm, || {}).unwrap();
     let xdg_shell = XdgShell::new(&globals, environment.surface_manager.clone());

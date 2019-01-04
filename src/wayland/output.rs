@@ -6,30 +6,40 @@ pub use wayland_client::protocol::wl_output::WlOutput;
 pub use wayland_client::protocol::wl_output::RequestsTrait as OutputRequests;
 pub use wayland_client::protocol::wl_output::{Subpixel, Transform};
 use wayland_client::protocol::wl_output::{Event, Mode as WlMode};
-use crate::wayland::event_queue::{EventSource};
+use crate::wayland::cursor::CursorManagerEvent;
+use crate::wayland::event_queue::{EventDrain, EventSource};
 use crate::wayland::surface::SurfaceManagerEvent;
 
 #[derive(Clone)]
 pub struct OutputManager {
-    sm_source: EventSource<SurfaceManagerEvent>,
     outputs: Arc<Mutex<Vec<Proxy<WlOutput>>>>,
+    event_drain: EventDrain<OutputManagerEvent>,
+    surface_manager_source: EventSource<SurfaceManagerEvent>,
+    cursor_manager_source: EventSource<CursorManagerEvent>,
 }
 
 impl OutputManager {
-    pub fn new(sm_source: EventSource<SurfaceManagerEvent>) -> Self {
+    pub fn new(
+        event_drain: EventDrain<OutputManagerEvent>,
+        surface_manager_source: EventSource<SurfaceManagerEvent>,
+        cursor_manager_source: EventSource<CursorManagerEvent>,
+    ) -> Self {
         OutputManager {
-            sm_source,
-            outputs: Arc::new(Mutex::new(Vec::new()))
+            outputs: Arc::new(Mutex::new(Vec::new())),
+            event_drain,
+            surface_manager_source,
+            cursor_manager_source,
         }
     }
 
-    pub fn new_output(
+    fn new_output(
         &self,
         output_id: u32,
         version: u32,
         registry: &Proxy<WlRegistry>,
     ) {
-        let sm_source = self.sm_source.clone();
+        let surface_manager_source = self.surface_manager_source.clone();
+        let cursor_manager_source = self.cursor_manager_source.clone();
         let output = registry
             .bind(version, output_id, |output| {
                 output.implement(move |event, output| {
@@ -92,7 +102,12 @@ impl OutputManager {
                                 output: output.clone(),
                                 factor,
                             };
-                            sm_source.push_event(event);
+                            surface_manager_source.push_event(event);
+                            let event = CursorManagerEvent::OutputScale {
+                                output: output.clone(),
+                                factor,
+                            };
+                            cursor_manager_source.push_event(event);
                         }
                     }
                 }, Mutex::new(OutputUserData::new()))
@@ -100,7 +115,17 @@ impl OutputManager {
         self.outputs.lock().unwrap().push(output);
     }
 
-    pub fn remove_output(&self, output_id: u32) {
+    fn remove_output(&self, output_id: u32) {
+        let output = self.get_output(output_id)
+            .unwrap();
+        let event = SurfaceManagerEvent::OutputLeave {
+            output: output.clone()
+        };
+        self.surface_manager_source.push_event(event);
+        let event = CursorManagerEvent::OutputLeave {
+            output
+        };
+        self.cursor_manager_source.push_event(event);
         self.outputs.lock().unwrap().retain(|output| {
             if output.id() == output_id && output.version() >= 3 {
                 output.release();
@@ -117,6 +142,17 @@ impl OutputManager {
         self.outputs.lock().unwrap().iter().find(|output| {
             output.id() == output_id
         }).map(|output| output.clone())
+    }
+
+    pub fn handle_events(&self) {
+        self.event_drain.poll_events(|event| match event {
+            OutputManagerEvent::NewOutput { id, version, registry } => {
+                self.new_output(id, version, &registry);
+            }
+            OutputManagerEvent::RemoveOutput { id } => {
+                self.remove_output(id);
+            }
+        })
     }
 }
 
@@ -183,4 +219,10 @@ pub struct Mode {
     pub is_current: bool,
     /// Whether this is the preferred mode for this output
     pub is_preferred: bool,
+}
+
+#[derive(Clone)]
+pub enum OutputManagerEvent {
+    NewOutput { id: u32, version: u32, registry: Proxy<WlRegistry> },
+    RemoveOutput { id: u32 },
 }
