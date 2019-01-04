@@ -7,6 +7,7 @@ pub use wayland_client::protocol::wl_subsurface::RequestsTrait as SubsurfaceRequ
 use wayland_client::protocol::wl_surface::Event;
 use crate::wayland::compositor::{WlCompositor, CompositorRequests};
 use crate::wayland::compositor::{WlSubcompositor, SubcompositorRequests};
+use crate::wayland::data_device::{DndEvent as DataDeviceEvent};
 use crate::wayland::event_queue::{EventQueue, EventSource, EventDrain};
 use crate::wayland::keyboard::KeyboardEvent;
 use crate::wayland::output::{WlOutput, OutputUserData};
@@ -162,4 +163,5 @@ pub enum SurfaceEvent {
     Pointer { event: PointerEvent },
     Keyboard { event: KeyboardEvent },
     Touch { event: TouchEvent },
+    DataDevice { event: DataDeviceEvent },
 }

@@ -17,6 +17,7 @@ struct Inner {
 
 /// A data offer for receiving data though copy/paste or
 /// drag and drop
+#[derive(Clone)]
 pub struct DataOffer {
     pub(crate) offer: Proxy<wl_data_offer::WlDataOffer>,
     inner: Arc<Mutex<Inner>>,
@@ -123,6 +124,12 @@ impl DataOffer {
     pub fn finish(&self) {
         self.offer.finish();
         self.offer.destroy();
+    }
+}
+
+impl std::fmt::Debug for DataOffer {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        write!(fmt, "DataOffer")
     }
 }
 

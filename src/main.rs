@@ -16,37 +16,8 @@ fn main() {
     let globals = environment.globals.clone();
     let mut pools = DoubleMemPool::new(&environment.shm, || {}).unwrap();
     let xdg_shell = XdgShell::new(&globals, environment.surface_manager.clone());
-
-    {
-        let outputs = environment.output_manager
-            .outputs()
-            .lock()
-            .unwrap();
-
-        for output in outputs.iter() {
-            let ud = output.user_data::<Mutex<OutputUserData>>()
-                .unwrap()
-                .lock()
-                .unwrap();
-            println!("{:?}", *ud);
-        }
-    }
-
-    {
-        let seats = environment.seat_manager
-            .seats()
-            .lock()
-            .unwrap();
-
-        for seat in seats.iter() {
-            let ud = seat.user_data::<Mutex<SeatUserData>>()
-                .unwrap()
-                .lock()
-                .unwrap();
-            println!("{}", ud.name());
-        }
-    }
-
+    print_outputs(&environment);
+    print_seats(&environment);
     let xdg_surface = xdg_shell.create_shell_surface();
 
     let mut close = false;
@@ -80,11 +51,14 @@ fn main() {
                     }
                     //println!("{:?}", event);
                 }
-                XdgSurfaceEvent::Keyboard { event } => {
+                XdgSurfaceEvent::Keyboard { event: _ } => {
                     //println!("{:?}", event);
                 }
-                XdgSurfaceEvent::Touch { event } => {
+                XdgSurfaceEvent::Touch { event: _ } => {
                     //println!("{:?}", event);
+                }
+                XdgSurfaceEvent::DataDevice { event } => {
+                    println!("{:?}", event);
                 }
             }
         });
@@ -136,18 +110,32 @@ fn redraw(
     Ok(())
 }
 
-/*let data_device_manager: Proxy<wl_data_device_manager::WlDataDeviceManager> = globals
-.instantiate_auto(|data_device_manager| {
-data_device_manager.implement(
-|event, _data_device_manager| match event {}, ())
-        })
-        .expect("Server didn't advertise `wl_data_device_manager`");
+fn print_outputs(environment: &Environment) {
+    let outputs = environment.output_manager
+        .outputs()
+        .lock()
+        .unwrap();
 
-    let xdg_decoration: Proxy<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1> = globals
-        .instantiate_auto(|manager| {
-            manager.implement(|event, _manager| match event {}, ())
-        })
-        .expect("Server didn't advertise `zxdg_decoration_manager`");*/
+    for output in outputs.iter() {
+        let ud = output.user_data::<Mutex<OutputUserData>>()
+            .unwrap()
+            .lock()
+            .unwrap();
+        println!("{:?}", *ud);
+    }
+}
 
-//use wayland_client::protocol::wl_data_device_manager;
-//use wayland_protocols::unstable::xdg_decoration::v1::client::zxdg_decoration_manager_v1;
+fn print_seats(environment: &Environment) {
+    let seats = environment.seat_manager
+        .seats()
+        .lock()
+        .unwrap();
+
+    for seat in seats.iter() {
+        let ud = seat.user_data::<Mutex<SeatUserData>>()
+            .unwrap()
+            .lock()
+            .unwrap();
+        println!("{}", ud.name());
+    }
+}

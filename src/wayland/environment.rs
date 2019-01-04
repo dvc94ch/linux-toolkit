@@ -2,6 +2,8 @@ use wayland_client::{Display, EventQueue as WlEventQueue,
                      GlobalEvent, GlobalManager, Proxy};
 use crate::wayland::compositor::{initialize_compositor, initialize_subcompositor};
 use crate::wayland::cursor::CursorManager;
+use crate::wayland::data_device::{initialize_data_device_manager,
+                                  WlDataDeviceManager};
 use crate::wayland::event_queue::EventQueue;
 use crate::wayland::output::{OutputManager, OutputManagerEvent};
 use crate::wayland::seat::{SeatManager, SeatManagerEvent};
@@ -16,7 +18,8 @@ pub struct Environment {
     pub seat_manager: SeatManager,
     pub surface_manager: SurfaceManager,
     pub cursor_manager: CursorManager,
-    pub shm: Proxy<WlShm>
+    pub shm: Proxy<WlShm>,
+    pub data_device_manager: Proxy<WlDataDeviceManager>,
 }
 
 impl Environment {
@@ -82,6 +85,7 @@ impl Environment {
         let compositor = initialize_compositor(&globals);
         let subcompositor = initialize_subcompositor(&globals);
         let shm = initialize_shm(&globals);
+        let data_device_manager = initialize_data_device_manager(&globals);
 
         let output_manager = OutputManager::new(
             output_manager_drain,
@@ -98,6 +102,7 @@ impl Environment {
         let seat_manager = SeatManager::new(
             seat_manager_drain,
             cursor_manager.clone(),
+            data_device_manager.clone(),
         );
         let surface_manager = SurfaceManager::new(
             surface_manager_drain,
@@ -114,9 +119,11 @@ impl Environment {
             surface_manager,
             cursor_manager,
             shm,
+            data_device_manager,
         };
 
         environment.output_manager.handle_events();
+        environment.handle_events();
         environment.handle_events();
 
         Ok(environment)

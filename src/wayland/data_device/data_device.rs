@@ -62,24 +62,24 @@ impl Inner {
 /// This type provides you with functionality to send and receive
 /// data through drag'n'drop or copy/paste actions. It is associated
 /// with a seat upon creation.
+#[derive(Clone)]
 pub struct DataDevice {
     device: Proxy<wl_data_device::WlDataDevice>,
     inner: Arc<Mutex<Inner>>,
 }
 
 /// Possible events generated during a drag'n'drop session
-pub enum DndEvent<'a> {
+#[derive(Clone, Debug)]
+pub enum DndEvent {
     /// A new drag'n'drop entered your surfaces
     Enter {
         /// The associated data offer
         ///
         /// Is None if it is an internal drag'n'drop you started with
         /// no source. See `DataDevice::start_drag` for details.
-        offer: Option<&'a DataOffer>,
+        offer: Option<DataOffer>,
         /// A serial associated with the entry of this dnd
         serial: u32,
-        /// The entered surface
-        surface: Proxy<wl_surface::WlSurface>,
         /// horizontal location on the surface
         x: f64,
         /// vertical location on the surface
@@ -91,7 +91,7 @@ pub enum DndEvent<'a> {
         ///
         /// Is None if it is an internal drag'n'drop you started with
         /// no source. See `DataDevice::start_drag` for details.
-        offer: Option<&'a DataOffer>,
+        offer: Option<DataOffer>,
         /// The time of this motion
         time: u32,
         /// new horizontal location
@@ -107,13 +107,13 @@ pub enum DndEvent<'a> {
         ///
         /// Is None if it is an internal drag'n'drop you started with
         /// no source. See `DataDevice::start_drag` for details.
-        offer: Option<&'a DataOffer>,
+        offer: Option<DataOffer>,
     },
 }
 
 fn data_device_implem<Impl>(event: wl_data_device::Event, inner: &mut Inner, implem: &mut Impl)
 where
-    for<'a> Impl: FnMut(DndEvent<'a>),
+    for<'a> Impl: FnMut(DndEvent),
 {
     use self::wl_data_device::Event;
 
@@ -121,7 +121,7 @@ where
         Event::DataOffer { id } => inner.new_offer(id),
         Event::Enter {
             serial,
-            surface,
+            surface: _,
             x,
             y,
             id,
@@ -129,10 +129,10 @@ where
             inner.set_dnd(id);
             implem(DndEvent::Enter {
                 serial,
-                surface,
+                //surface,
                 x,
                 y,
-                offer: inner.current_dnd.as_ref(),
+                offer: inner.current_dnd.clone(),
             });
         }
         Event::Motion { time, x, y } => {
@@ -140,13 +140,13 @@ where
                 x,
                 y,
                 time,
-                offer: inner.current_dnd.as_ref(),
+                offer: inner.current_dnd.clone(),
             });
         }
         Event::Leave => implem(DndEvent::Leave),
         Event::Drop => {
             implem(DndEvent::Drop {
-                offer: inner.current_dnd.as_ref(),
+                offer: inner.current_dnd.clone(),
             });
         }
         Event::Selection { id } => inner.set_selection(id),
@@ -164,7 +164,7 @@ impl DataDevice {
         mut implem: Impl,
     ) -> DataDevice
     where
-        for<'a> Impl: FnMut(DndEvent<'a>) + Send + 'static,
+        Impl: FnMut(DndEvent) + Send + 'static,
     {
         let inner = Arc::new(Mutex::new(Inner {
             selection: None,
@@ -201,7 +201,7 @@ impl DataDevice {
         token: &QueueToken,
     ) -> DataDevice
     where
-        for<'a> Impl: FnMut(DndEvent<'a>) + Send + 'static,
+        Impl: FnMut(DndEvent) + Send + 'static,
     {
         let inner = Arc::new(Mutex::new(Inner {
             selection: None,

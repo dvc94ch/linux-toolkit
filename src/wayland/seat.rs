@@ -6,6 +6,7 @@ pub use wayland_client::protocol::wl_seat::WlSeat;
 pub use wayland_client::protocol::wl_seat::RequestsTrait as SeatRequests;
 use wayland_client::protocol::wl_seat::{Capability, Event};
 use crate::wayland::cursor::CursorManager;
+use crate::wayland::data_device::{DataDevice, WlDataDeviceManager};
 use crate::wayland::event_queue::EventDrain;
 use crate::wayland::keyboard::{WlKeyboard, KeyboardRequests, implement_keyboard};
 use crate::wayland::pointer::{WlPointer, PointerRequests, implement_pointer};
@@ -16,17 +17,20 @@ pub struct SeatManager {
     seats: Arc<Mutex<Vec<Proxy<WlSeat>>>>,
     event_drain: EventDrain<SeatManagerEvent>,
     cursor_manager: CursorManager,
+    data_device_manager: Proxy<WlDataDeviceManager>,
 }
 
 impl SeatManager {
     pub fn new(
         event_drain: EventDrain<SeatManagerEvent>,
         cursor_manager: CursorManager,
+        data_device_manager: Proxy<WlDataDeviceManager>,
     ) -> Self {
         SeatManager {
             seats: Arc::new(Mutex::new(Vec::new())),
             event_drain,
             cursor_manager,
+            data_device_manager,
         }
     }
 
@@ -37,6 +41,7 @@ impl SeatManager {
         registry: &Proxy<WlRegistry>,
     ) {
         let cursor_manager = self.cursor_manager.clone();
+        let data_device_manager = self.data_device_manager.clone();
         let seat = registry
             .bind(version, seat_id, |seat| {
                 seat.implement(move |event, seat| {
@@ -45,7 +50,11 @@ impl SeatManager {
                         .unwrap()
                         .lock()
                         .unwrap();
-
+                    user_data.data_device = Some(DataDevice::init_for_seat(
+                        &data_device_manager,
+                        &seat,
+                        |_| {},
+                    ));
                     match event {
                         Event::Name { name } => {
                             user_data.name = name;
@@ -127,6 +136,7 @@ pub struct SeatUserData {
     pointer: Option<Proxy<WlPointer>>,
     keyboard: Option<Proxy<WlKeyboard>>,
     touch: Option<Proxy<WlTouch>>,
+    data_device: Option<DataDevice>,
 }
 
 impl SeatUserData {
@@ -136,6 +146,7 @@ impl SeatUserData {
             pointer: None,
             keyboard: None,
             touch: None,
+            data_device: None,
         }
     }
 
@@ -153,6 +164,10 @@ impl SeatUserData {
 
     pub fn touch(&self) -> &Option<Proxy<WlTouch>> {
         &self.touch
+    }
+
+    pub fn data_device(&self) -> &Option<DataDevice> {
+        &self.data_device
     }
 }
 

@@ -12,6 +12,7 @@ use wayland_protocols::xdg_shell::client::{
     xdg_toplevel::Event as XdgToplevelEvent,
     xdg_toplevel::State,
 };
+use crate::wayland::data_device::{DndEvent as DataDeviceEvent};
 use crate::wayland::event_queue::{EventQueue, EventDrain};
 use crate::wayland::keyboard::KeyboardEvent;
 use crate::wayland::pointer::PointerEvent;
@@ -137,6 +138,9 @@ impl XdgShellSurface {
                     SurfaceEvent::Touch { event } => {
                         cb(XdgSurfaceEvent::Touch { event }, self);
                     }
+                    SurfaceEvent::DataDevice { event } => {
+                        cb(XdgSurfaceEvent::DataDevice { event }, self);
+                    }
                 }
             });
         }
@@ -167,4 +171,5 @@ pub enum XdgSurfaceEvent {
     Pointer { event: PointerEvent },
     Keyboard { event: KeyboardEvent },
     Touch { event: TouchEvent },
+    DataDevice { event: DataDeviceEvent },
 }
