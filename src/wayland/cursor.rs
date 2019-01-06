@@ -1,15 +1,19 @@
-use std::sync::{Arc, Mutex};
-use wayland_client::Proxy;
-use wayland_client::cursor;
-use crate::wayland::compositor::{WlCompositor, CompositorRequests};
+//! Handles cursor theme loading and changing the cursor icon.
+use crate::wayland::compositor::{CompositorRequests, WlCompositor};
 use crate::wayland::event_queue::EventDrain;
-use crate::wayland::output::{WlOutput, OutputUserData, OutputManager};
-use crate::wayland::pointer::{WlPointer, PointerRequests};
+use crate::wayland::output::{OutputManager, OutputUserData, WlOutput};
+use crate::wayland::pointer::{PointerRequests, WlPointer};
 use crate::wayland::shm::WlShm;
-use crate::wayland::surface::{WlSurface, SurfaceRequests};
+use crate::wayland::surface::{SurfaceRequests, WlSurface};
+use std::sync::{Arc, Mutex};
+use wayland_client::cursor;
+use wayland_client::Proxy;
 
-pub struct CursorTheme {
+/// A scale factor aware cursor theme
+struct CursorTheme {
+    /// The `libwayland-cursor` theme
     theme: cursor::CursorTheme,
+    /// The scale factor used to load the cursor theme
     scale_factor: u32,
 }
 
@@ -19,11 +23,7 @@ impl CursorTheme {
     /// Will use the default theme of the system if theme_name is `None`.
     ///
     /// Returns `Err(())` if `libwayland-cursor` is not available.
-    pub fn new(
-        shm: &Proxy<WlShm>,
-        name: Option<&String>,
-        scale_factor: u32,
-    ) -> Result<Self, ()> {
+    pub fn new(shm: &Proxy<WlShm>, name: Option<&String>, scale_factor: u32) -> Result<Self, ()> {
         if !cursor::is_available() {
             return Err(());
         }
@@ -35,11 +35,7 @@ impl CursorTheme {
         // 32 * 2 - 16 = 48
         let size = 32 * scale_factor - 16;
 
-        let theme = cursor::load_theme(
-            name.map(|s| &**s),
-            size as u32,
-            shm,
-        );
+        let theme = cursor::load_theme(name.map(|s| &**s), size as u32, shm);
 
         Ok(CursorTheme {
             theme,
@@ -47,10 +43,12 @@ impl CursorTheme {
         })
     }
 
+    /// Returns the cursor called `cursor_name` if it exists.
     pub fn get_cursor(&self, cursor_name: &str) -> Option<cursor::Cursor> {
         self.theme.get_cursor(cursor_name)
     }
 
+    /// Returns the scale factor that the theme was loaded with.
     pub fn scale_factor(&self) -> u32 {
         self.scale_factor
     }
@@ -72,9 +70,9 @@ impl CursorInner {
         theme: Arc<Mutex<Option<CursorTheme>>>,
         cursor_name: Option<String>,
     ) -> Result<Self, ()> {
-        let surface = compositor.create_surface(|surface| {
-            surface.implement(|_, _| {}, ())
-        }).unwrap();
+        let surface = compositor
+            .create_surface(|surface| surface.implement(|_, _| {}, ()))
+            .unwrap();
         let cursor_name = cursor_name.unwrap_or_else(|| "left_ptr".into());
         let mut cursor = CursorInner {
             pointer: None,
@@ -108,12 +106,10 @@ impl CursorInner {
     fn load_cursor(&mut self) -> Result<(), ()> {
         let theme = self.theme.lock().unwrap();
         if theme.is_none() {
-            return Err(())
+            return Err(());
         }
         let theme_ref = theme.as_ref().unwrap();
-        let cursor = theme_ref
-            .get_cursor(&self.cursor_name)
-            .ok_or(())?;
+        let cursor = theme_ref.get_cursor(&self.cursor_name).ok_or(())?;
         let buffer = cursor.frame_buffer(0).ok_or(())?;
         let (w, h, hx, hy) = cursor
             .frame_info(0)
@@ -123,7 +119,8 @@ impl CursorInner {
         self.hy = hy;
 
         self.surface.attach(Some(&buffer), 0, 0);
-        self.surface.set_buffer_scale(theme_ref.scale_factor() as i32);
+        self.surface
+            .set_buffer_scale(theme_ref.scale_factor() as i32);
         if self.surface.version() >= 4 {
             self.surface.damage_buffer(0, 0, w, h);
         } else {
@@ -145,13 +142,16 @@ impl CursorInner {
     }
 }
 
+/// A cloneable cursor
 #[derive(Clone)]
 pub struct Cursor {
+    /// The internal cursor
     inner: Arc<Mutex<CursorInner>>,
 }
 
 impl Cursor {
-    pub fn new(
+    /// Creates a new `Cursor`
+    fn new(
         compositor: &Proxy<WlCompositor>,
         theme: Arc<Mutex<Option<CursorTheme>>>,
         cursor_name: Option<String>,
@@ -162,16 +162,21 @@ impl Cursor {
         })
     }
 
+    /// Called when a `wl_pointer` enters a surface. After entering
+    /// a surface the cursor's `wl_surface` needs to be sent to the
+    /// compositor. You need to call `set_cursor` or `change_cursor`.
     pub fn enter_surface(&self, pointer: Proxy<WlPointer>, serial: u32) {
         let mut cursor = self.inner.lock().unwrap();
         cursor.enter_surface(pointer, serial);
     }
 
+    /// Changes the cursor to `cursor_name` and sets the cursor surface.
     pub fn change_cursor(&self, cursor_name: Option<String>) -> Result<(), ()> {
         let mut cursor = self.inner.lock().unwrap();
         cursor.change_cursor(cursor_name)
     }
 
+    /// Sets the cursor surface.
     pub fn set_cursor(&self) {
         let cursor = self.inner.lock().unwrap();
         cursor.set_cursor();
@@ -191,10 +196,12 @@ impl PartialEq for Cursor {
 
 impl std::fmt::Debug for Cursor {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-       write!(fmt, "Cursor")
+        write!(fmt, "Cursor")
     }
 }
 
+/// The `CursorManager` reloads the `CursorTheme` when a `wl_output` is removed
+/// or a scale factor is changed.
 #[derive(Clone)]
 pub struct CursorManager {
     cursors: Arc<Mutex<Vec<Cursor>>>,
@@ -208,6 +215,7 @@ pub struct CursorManager {
 }
 
 impl CursorManager {
+    /// Creates a new `CursorManager`
     pub fn new(
         event_drain: EventDrain<CursorManagerEvent>,
         output_manager: OutputManager,
@@ -227,37 +235,40 @@ impl CursorManager {
         }
     }
 
+    /// Creates a new `Cursor`
     pub fn new_cursor(&self, cursor_name: Option<String>) -> Cursor {
-        let cursor = Cursor::new(
-            &self.compositor,
-            self.theme.clone(),
-            cursor_name,
-        ).unwrap();
+        let cursor = Cursor::new(&self.compositor, self.theme.clone(), cursor_name).unwrap();
         let mut cursors = self.cursors.lock().unwrap();
         cursors.push(cursor.clone());
         cursor
     }
 
+    /// Removes a `Cursor` when it is no longer needed
     pub fn remove_cursor(&self, cursor: &Cursor) {
         let mut cursors = self.cursors.lock().unwrap();
-        cursors.retain(|cursor2| {
-            cursor != cursor2
-        });
+        cursors.retain(|cursor2| cursor != cursor2);
     }
 
+    /// Returns all cursors
     pub fn cursors(&self) -> &Arc<Mutex<Vec<Cursor>>> {
         &self.cursors
     }
 
+    /// Processes it's event queues and reloads themes and cursors
+    /// when necessary
     pub fn handle_events(&mut self) {
         let mut update_scale_factor = false;
         self.event_drain.poll_events(|event| match event {
-            CursorManagerEvent::OutputScale { output: _, factor: _ } |
-            CursorManagerEvent::OutputLeave { output: _ } => {
+            CursorManagerEvent::OutputScale {
+                output: _,
+                factor: _,
+            }
+            | CursorManagerEvent::OutputLeave { output: _ } => {
                 update_scale_factor = true;
             }
         });
-        let new_scale_factor = self.output_manager
+        let new_scale_factor = self
+            .output_manager
             .outputs()
             .lock()
             .unwrap()
@@ -275,11 +286,7 @@ impl CursorManager {
         if new_scale_factor != self.scale_factor {
             self.scale_factor = new_scale_factor;
             let mut theme = self.theme.lock().unwrap();
-            *theme = CursorTheme::new(
-                &self.shm,
-                self.theme_name.as_ref(),
-                self.scale_factor,
-            ).ok();
+            *theme = CursorTheme::new(&self.shm, self.theme_name.as_ref(), self.scale_factor).ok();
             let mut cursors = self.cursors.lock().unwrap();
             for cursor in cursors.iter_mut() {
                 cursor.load_cursor().unwrap();
@@ -288,8 +295,19 @@ impl CursorManager {
     }
 }
 
+/// The events that a `CursorManager` needs to know about
 #[derive(Clone)]
 pub enum CursorManagerEvent {
-    OutputScale { output: Proxy<WlOutput>, factor: u32 },
-    OutputLeave { output: Proxy<WlOutput> },
+    /// The scale factor of an output was changed
+    OutputScale {
+        /// The `wl_output`
+        output: Proxy<WlOutput>,
+        /// The new scale factor
+        factor: u32,
+    },
+    /// An output was disconnected
+    OutputLeave {
+        /// The `wl_output`
+        output: Proxy<WlOutput>,
+    },
 }

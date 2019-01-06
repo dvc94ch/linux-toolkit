@@ -1,8 +1,9 @@
-use wayland_client::protocol::{wl_data_device_manager, wl_data_source};
+//! Data source handling
+use crate::wayland::data_device::{DataDeviceManagerRequests, DndAction, WlDataDeviceManager};
+use wayland_client::protocol::wl_data_source::Event;
+pub use wayland_client::protocol::wl_data_source::RequestsTrait as DataSourceRequests;
+pub use wayland_client::protocol::wl_data_source::WlDataSource;
 use wayland_client::{Proxy, QueueToken};
-
-use wayland_client::protocol::wl_data_device_manager::RequestsTrait as MgrRequests;
-use wayland_client::protocol::wl_data_source::RequestsTrait as SourceRequests;
 
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::{fs, io};
@@ -10,7 +11,7 @@ use std::{fs, io};
 /// A data source for sending data though copy/paste or
 /// drag and drop
 pub struct DataSource {
-    pub(crate) source: Proxy<wl_data_source::WlDataSource>,
+    pub(crate) source: Proxy<WlDataSource>,
 }
 
 /// Possible events a data source needs to react to
@@ -47,7 +48,7 @@ pub enum DataSourceEvent {
     /// should actually be taken.
     Action {
         /// The action chosen by the target
-        action: wl_data_device_manager::DndAction,
+        action: DndAction,
     },
     /// The action using this data source was cancelled.
     ///
@@ -78,14 +79,10 @@ pub enum DataSourceEvent {
     Finished,
 }
 
-fn data_source_impl<Impl>(
-    evt: wl_data_source::Event,
-    source: &Proxy<wl_data_source::WlDataSource>,
-    implem: &mut Impl,
-) where
+fn data_source_impl<Impl>(evt: Event, source: &Proxy<WlDataSource>, implem: &mut Impl)
+where
     Impl: FnMut(DataSourceEvent),
 {
-    use self::wl_data_source::Event;
     let event = match evt {
         Event::Target { mime_type } => DataSourceEvent::Target { mime_type },
         Event::Send { mime_type, fd } => DataSourceEvent::Send {
@@ -93,7 +90,7 @@ fn data_source_impl<Impl>(
             pipe: unsafe { FromRawFd::from_raw_fd(fd) },
         },
         Event::Action { dnd_action } => DataSourceEvent::Action {
-            action: wl_data_device_manager::DndAction::from_bits_truncate(dnd_action),
+            action: DndAction::from_bits_truncate(dnd_action),
         },
         Event::Cancelled => {
             source.destroy();
@@ -114,7 +111,7 @@ impl DataSource {
     /// You'll then need to provide it to a data device to send it
     /// either via selection (aka copy/paste) or via a drag and drop.
     pub fn new<Impl>(
-        mgr: &Proxy<wl_data_device_manager::WlDataDeviceManager>,
+        mgr: &Proxy<WlDataDeviceManager>,
         mime_types: &[&str],
         mut implem: Impl,
     ) -> DataSource
@@ -144,7 +141,7 @@ impl DataSource {
     ///
     /// **unsafety**: for the same reasons as `NewProxy::implement_nonsend`
     pub unsafe fn new_nonsend<Impl>(
-        mgr: &Proxy<wl_data_device_manager::WlDataDeviceManager>,
+        mgr: &Proxy<WlDataDeviceManager>,
         mime_types: &[&str],
         mut implem: Impl,
         token: &QueueToken,

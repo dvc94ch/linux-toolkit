@@ -1,28 +1,42 @@
-use wayland_client::{Display, EventQueue as WlEventQueue,
-                     GlobalEvent, GlobalManager, Proxy};
+//! Wayland boilerplate handling
 use crate::wayland::compositor::{initialize_compositor, initialize_subcompositor};
 use crate::wayland::cursor::CursorManager;
-use crate::wayland::data_device::{initialize_data_device_manager,
-                                  WlDataDeviceManager};
+use crate::wayland::data_device::{initialize_data_device_manager, WlDataDeviceManager};
 use crate::wayland::event_queue::EventQueue;
 use crate::wayland::output::{OutputManager, OutputManagerEvent};
 use crate::wayland::seat::{SeatManager, SeatManagerEvent};
 use crate::wayland::shm::{initialize_shm, WlShm};
 use crate::wayland::surface::SurfaceManager;
+use wayland_client::{Display, EventQueue as WlEventQueue, GlobalEvent, GlobalManager, Proxy};
 
+/// The `Environment` ties together all the wayland boilerplate
 pub struct Environment {
+    /// The wayland display
     pub display: Display,
+    /// The way
     pub event_queue: WlEventQueue,
+    /// The underlying `GlobalManager` wrapping your registry
     pub globals: GlobalManager,
+    /// A manager for handling the advertised outputs
     pub output_manager: OutputManager,
+    /// A manager for handling the advertised seats
     pub seat_manager: SeatManager,
+    /// A manager for handling surfaces
     pub surface_manager: SurfaceManager,
+    /// A manager for handling cursors
     pub cursor_manager: CursorManager,
+    /// The SHM global, to create shared memory buffers
     pub shm: Proxy<WlShm>,
+    /// The data device manager, used to handle drag&drop and selection
+    /// copy/paste
     pub data_device_manager: Proxy<WlDataDeviceManager>,
 }
 
 impl Environment {
+    /// Creates an `Environment`.
+    ///
+    /// Optionally takes the name of the cursor theme to load and otherwise
+    /// uses the `libwayland-cursor` default.
     pub fn initialize(theme_name: Option<String>) -> std::io::Result<Self> {
         let (display, mut event_queue) = Display::connect_to_env().unwrap();
 
@@ -32,47 +46,41 @@ impl Environment {
         let (cursor_manager_source, cursor_manager_drain) = EventQueue::new();
 
         let globals = {
-            GlobalManager::new_with_cb(&display, move |event, registry| {
-                match event {
-                    GlobalEvent::New { id, ref interface, version } => {
-                        match &interface[..] {
-                            "wl_output" => {
-                                let event = OutputManagerEvent::NewOutput {
-                                    id,
-                                    version,
-                                    registry,
-                                };
-                                output_manager_source.push_event(event);
-                            },
-                            "wl_seat" => {
-                                let event = SeatManagerEvent::NewSeat {
-                                    id,
-                                    version,
-                                    registry,
-                                };
-                                seat_manager_source.push_event(event);
-                            },
-                            _ => {},
-                        }
+            GlobalManager::new_with_cb(&display, move |event, registry| match event {
+                GlobalEvent::New {
+                    id,
+                    ref interface,
+                    version,
+                } => match &interface[..] {
+                    "wl_output" => {
+                        let event = OutputManagerEvent::NewOutput {
+                            id,
+                            version,
+                            registry,
+                        };
+                        output_manager_source.push_event(event);
                     }
-                    GlobalEvent::Removed { id, ref interface } => {
-                        match &interface[..] {
-                            "wl_output" => {
-                                let event = OutputManagerEvent::RemoveOutput {
-                                    id
-                                };
-                                output_manager_source.push_event(event);
-                            },
-                            "wl_seat" => {
-                                let event = SeatManagerEvent::RemoveSeat {
-                                    id
-                                };
-                                seat_manager_source.push_event(event);
-                            },
-                            _ => {},
-                        }
+                    "wl_seat" => {
+                        let event = SeatManagerEvent::NewSeat {
+                            id,
+                            version,
+                            registry,
+                        };
+                        seat_manager_source.push_event(event);
                     }
-                }
+                    _ => {}
+                },
+                GlobalEvent::Removed { id, ref interface } => match &interface[..] {
+                    "wl_output" => {
+                        let event = OutputManagerEvent::RemoveOutput { id };
+                        output_manager_source.push_event(event);
+                    }
+                    "wl_seat" => {
+                        let event = SeatManagerEvent::RemoveSeat { id };
+                        seat_manager_source.push_event(event);
+                    }
+                    _ => {}
+                },
             })
         };
 
@@ -80,7 +88,6 @@ impl Environment {
         // and the globals metadata
         event_queue.sync_roundtrip()?;
         event_queue.sync_roundtrip()?;
-
 
         let compositor = initialize_compositor(&globals);
         let subcompositor = initialize_subcompositor(&globals);
@@ -129,6 +136,8 @@ impl Environment {
         Ok(environment)
     }
 
+    /// Handles sending and receiving queued wayland messages and all internal
+    /// event processing. It should be called on every event loop.
     pub fn handle_events(&mut self) {
         self.display.flush().unwrap();
         self.event_queue.dispatch().unwrap();

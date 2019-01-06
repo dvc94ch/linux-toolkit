@@ -1,6 +1,9 @@
+//! Wayland protocol handling
 pub mod compositor;
 pub mod cursor;
 pub mod data_device;
+pub mod data_offer;
+pub mod data_source;
 pub mod environment;
 pub mod event_queue;
 pub mod keyboard;
@@ -11,7 +14,7 @@ pub mod seat;
 pub mod shm;
 pub mod surface;
 pub mod touch;
-pub mod xkbcommon;
 pub mod xdg_shell;
+pub mod xkbcommon;
 
 pub use wayland_client::Proxy;

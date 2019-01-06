@@ -1,8 +1,9 @@
+//! Data offer handling
 use wayland_client::protocol::wl_data_device_manager::DndAction;
-use wayland_client::protocol::wl_data_offer;
+use wayland_client::protocol::wl_data_offer::Event;
+pub use wayland_client::protocol::wl_data_offer::RequestsTrait as OfferRequests;
+pub use wayland_client::protocol::wl_data_offer::WlDataOffer;
 use wayland_client::{NewProxy, Proxy};
-
-use wayland_client::protocol::wl_data_offer::RequestsTrait as OfferRequests;
 
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::sync::{Arc, Mutex};
@@ -19,12 +20,12 @@ struct Inner {
 /// drag and drop
 #[derive(Clone)]
 pub struct DataOffer {
-    pub(crate) offer: Proxy<wl_data_offer::WlDataOffer>,
+    pub(crate) offer: Proxy<WlDataOffer>,
     inner: Arc<Mutex<Inner>>,
 }
 
 impl DataOffer {
-    pub(crate) fn new(offer: NewProxy<wl_data_offer::WlDataOffer>) -> DataOffer {
+    pub(crate) fn new(offer: NewProxy<WlDataOffer>) -> DataOffer {
         let inner = Arc::new(Mutex::new(Inner {
             mime_types: Vec::new(),
             actions: DndAction::None,
@@ -34,7 +35,6 @@ impl DataOffer {
         let inner2 = inner.clone();
         let offer = offer.implement(
             move |event, _| {
-                use self::wl_data_offer::Event;
                 let mut inner = inner2.lock().unwrap();
                 match event {
                     Event::Offer { mime_type } => {

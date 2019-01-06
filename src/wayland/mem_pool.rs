@@ -1,3 +1,4 @@
+//! Shm pool and buffer handling
 use nix;
 use nix::errno::Errno;
 use nix::fcntl;

@@ -1,21 +1,21 @@
-use std::sync::Mutex;
-use std::io::{BufWriter, Seek, SeekFrom, Write, Error};
 use byteorder::{NativeEndian, WriteBytesExt};
-use linux_toolkit::wayland::Proxy;
+use linux_toolkit::wayland::data_device::DataDeviceEvent;
 use linux_toolkit::wayland::environment::Environment;
 use linux_toolkit::wayland::mem_pool::{DoubleMemPool, MemPool};
 use linux_toolkit::wayland::output::OutputUserData;
 use linux_toolkit::wayland::pointer::PointerEvent;
-use linux_toolkit::wayland::seat::SeatUserData;
+use linux_toolkit::wayland::seat::{SeatEvent, SeatUserData};
 use linux_toolkit::wayland::shm::Format;
-use linux_toolkit::wayland::surface::{WlSurface, SurfaceRequests};
+use linux_toolkit::wayland::surface::{SurfaceRequests, WlSurface};
 use linux_toolkit::wayland::xdg_shell::{XdgShell, XdgSurfaceEvent};
+use linux_toolkit::wayland::Proxy;
+use std::io::{BufWriter, Error, Seek, SeekFrom, Write};
+use std::sync::Mutex;
 
 fn main() {
     let mut environment = Environment::initialize(None).unwrap();
-    let globals = environment.globals.clone();
     let mut pools = DoubleMemPool::new(&environment.shm, || {}).unwrap();
-    let xdg_shell = XdgShell::new(&globals, environment.surface_manager.clone());
+    let xdg_shell = XdgShell::new(&environment.globals, environment.surface_manager.clone());
     print_outputs(&environment);
     print_seats(&environment);
     let xdg_surface = xdg_shell.create_shell_surface();
@@ -27,39 +27,41 @@ fn main() {
     let mut surface_scale_factor = 1;
 
     loop {
-        xdg_surface.poll_events(|event, _xdg_surface| {
-            match event {
-                XdgSurfaceEvent::Close => {
-                    close = true;
+        xdg_surface.poll_events(|event, _xdg_surface| match event {
+            XdgSurfaceEvent::Close => {
+                close = true;
+            }
+            XdgSurfaceEvent::Configure { size, .. } => {
+                configure = true;
+                if surface_size != size {
+                    surface_size = size;
+                    resize = true;
                 }
-                XdgSurfaceEvent::Configure { size, .. } => {
-                    configure = true;
-                    if surface_size != size {
-                        surface_size = size;
-                        resize = true;
-                    }
+            }
+            XdgSurfaceEvent::Scale { scale_factor } => {
+                if scale_factor != surface_scale_factor {
+                    surface_scale_factor = scale_factor;
+                    resize = true;
                 }
-                XdgSurfaceEvent::Scale { scale_factor } => {
-                    if scale_factor != surface_scale_factor {
-                        surface_scale_factor = scale_factor;
-                        resize = true;
-                    }
+            }
+            XdgSurfaceEvent::Seat { seat_id: _, event } => {
+                if let SeatEvent::Pointer {
+                    event: PointerEvent::Enter { ref cursor, .. },
+                } = event
+                {
+                    cursor.change_cursor(Some("grabbing".into())).unwrap();
                 }
-                XdgSurfaceEvent::Pointer { event } => {
-                    if let PointerEvent::Enter { ref cursor, .. } = event {
-                        cursor.change_cursor(Some("grabbing".into())).unwrap();
-                    }
-                    //println!("{:?}", event);
+                if let SeatEvent::DataDevice {
+                    event:
+                        DataDeviceEvent::Enter {
+                            offer: Some(ref offer),
+                            ..
+                        },
+                } = event
+                {
+                    offer.accept(None);
                 }
-                XdgSurfaceEvent::Keyboard { event: _ } => {
-                    //println!("{:?}", event);
-                }
-                XdgSurfaceEvent::Touch { event: _ } => {
-                    //println!("{:?}", event);
-                }
-                XdgSurfaceEvent::DataDevice { event } => {
-                    println!("{:?}", event);
-                }
+                println!("{:?}", event);
             }
         });
         if close {
@@ -72,7 +74,8 @@ fn main() {
                     xdg_surface.surface(),
                     surface_size,
                     surface_scale_factor,
-                ).unwrap();
+                )
+                .unwrap();
             }
             resize = false;
         }
@@ -106,18 +109,17 @@ fn redraw(
         Format::Argb8888,
     );
     surface.attach(Some(&new_buffer), 0, 0);
+    surface.set_buffer_scale(scale_factor as i32);
     surface.commit();
     Ok(())
 }
 
 fn print_outputs(environment: &Environment) {
-    let outputs = environment.output_manager
-        .outputs()
-        .lock()
-        .unwrap();
+    let outputs = environment.output_manager.outputs().lock().unwrap();
 
     for output in outputs.iter() {
-        let ud = output.user_data::<Mutex<OutputUserData>>()
+        let ud = output
+            .user_data::<Mutex<OutputUserData>>()
             .unwrap()
             .lock()
             .unwrap();
@@ -126,13 +128,11 @@ fn print_outputs(environment: &Environment) {
 }
 
 fn print_seats(environment: &Environment) {
-    let seats = environment.seat_manager
-        .seats()
-        .lock()
-        .unwrap();
+    let seats = environment.seat_manager.seats().lock().unwrap();
 
     for seat in seats.iter() {
-        let ud = seat.user_data::<Mutex<SeatUserData>>()
+        let ud = seat
+            .user_data::<Mutex<SeatUserData>>()
             .unwrap()
             .lock()
             .unwrap();

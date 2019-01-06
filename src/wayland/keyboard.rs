@@ -1,110 +1,95 @@
-use std::sync::Mutex;
-use wayland_client::{Proxy, NewProxy};
-pub use wayland_client::protocol::wl_keyboard::WlKeyboard;
-pub use wayland_client::protocol::wl_keyboard::RequestsTrait as KeyboardRequests;
-pub use wayland_client::protocol::wl_keyboard::KeyState;
-use wayland_client::protocol::wl_keyboard::Event;
-use wayland_client::protocol::wl_keyboard::KeymapFormat;
-use crate::wayland::event_queue::EventSource;
-use crate::wayland::surface::{SurfaceEvent, SurfaceUserData};
-use crate::wayland::xkbcommon::KbState;
+//! Keyboard handling
+use crate::wayland::seat::SeatEventSource;
+use crate::wayland::xkbcommon::KeyboardState;
 pub use crate::wayland::xkbcommon::{Keycode, Keysym, ModifiersState};
+use wayland_client::protocol::wl_keyboard::Event;
+pub use wayland_client::protocol::wl_keyboard::KeyState;
+use wayland_client::protocol::wl_keyboard::KeymapFormat;
+pub use wayland_client::protocol::wl_keyboard::RequestsTrait as KeyboardRequests;
+pub use wayland_client::protocol::wl_keyboard::WlKeyboard;
+use wayland_client::{NewProxy, Proxy};
 
-pub fn implement_keyboard(keyboard: NewProxy<WlKeyboard>) -> Proxy<WlKeyboard> {
-    let mut event_source: Option<EventSource<SurfaceEvent>> = None;
-    let mut kb_state = KbState::new();
+/// Handles `wl_keyboard` events and forwards the ones
+/// that need user handling to an event queue.
+pub fn implement_keyboard(
+    keyboard: NewProxy<WlKeyboard>,
+    mut event_queue: SeatEventSource<KeyboardEvent>,
+) -> Proxy<WlKeyboard> {
+    let mut state = KeyboardState::new();
 
-    keyboard.implement(move |event, _keyboard| {
-        match event.clone() {
-            Event::Keymap { format, fd, size } => {
-                if KeymapFormat::XkbV1 == format {
-                    kb_state.load_keymap_from_fd(fd, size as usize);
+    keyboard.implement(
+        move |event, _keyboard| {
+            match event.clone() {
+                Event::Keymap { format, fd, size } => {
+                    if KeymapFormat::XkbV1 == format {
+                        state.load_keymap_from_fd(fd, size as usize);
+                    }
                 }
-            },
-            Event::RepeatInfo { rate, delay } => {
-                kb_state.set_repeat_info(rate as u32, delay as u32);
-            },
-            Event::Modifiers {
-                mods_depressed,
-                mods_latched,
-                mods_locked,
-                group,
-                serial: _,
-            } => {
-                let modifiers = kb_state.update_modifiers(
+                Event::RepeatInfo { rate, delay } => {
+                    state.set_repeat_info(rate as u32, delay as u32);
+                }
+                Event::Modifiers {
                     mods_depressed,
                     mods_latched,
                     mods_locked,
                     group,
-                );
-                let event = SurfaceEvent::Keyboard {
-                    event: KeyboardEvent::Modifiers {
-                        modifiers
-                    }
-                };
-                event_source.as_ref().unwrap().push_event(event);
-            },
-            Event::Enter {
-                surface,
-                serial: _,
-                keys,
-            } => {
-                let rawkeys: Vec<Keycode> = unsafe {
-                    ::std::slice::from_raw_parts(
-                        keys.as_ptr() as *const u32,
-                        keys.len() / 4,
-                    ).to_vec()
-                };
-                let keysyms: Vec<Keysym> = rawkeys
-                    .iter()
-                    .map(|rawkey| kb_state.get_sym(*rawkey))
-                    .collect();
+                    serial: _,
+                } => {
+                    let modifiers =
+                        state.update_modifiers(mods_depressed, mods_latched, mods_locked, group);
+                    event_queue.queue_event(KeyboardEvent::Modifiers { modifiers });
+                }
+                Event::Enter {
+                    surface,
+                    serial: _,
+                    keys,
+                } => {
+                    let rawkeys: Vec<Keycode> = unsafe {
+                        ::std::slice::from_raw_parts(keys.as_ptr() as *const u32, keys.len() / 4)
+                            .to_vec()
+                    };
+                    let keysyms: Vec<Keysym> = rawkeys
+                        .iter()
+                        .map(|rawkey| state.get_sym(*rawkey))
+                        .collect();
 
-                let user_data = surface
-                    .user_data::<Mutex<SurfaceUserData>>()
-                    .unwrap()
-                    .lock()
-                    .unwrap();
-                event_source = Some(user_data.event_source.clone());
-                let event = SurfaceEvent::Keyboard {
-                    event: KeyboardEvent::Enter {
-                        rawkeys,
-                        keysyms,
-                    }
-                };
-                event_source.as_ref().unwrap().push_event(event);
-            },
-            Event::Leave { surface: _, serial: _ } => {
-                // TODO abort repeat
-                let event = SurfaceEvent::Keyboard {
-                    event: KeyboardEvent::Leave
-                };
-                event_source.take().unwrap().push_event(event);
-            },
-            Event::Key { serial: _, time, key: rawkey, state } => {
-                let keysym = kb_state.get_sym(rawkey);
-                let utf8 = match state {
-                    KeyState::Pressed => {
-                        kb_state.compose(keysym).unwrap_or_else(|| {
-                            kb_state.get_utf8(rawkey)
-                        })
-                    }
-                    KeyState::Released => None
-                };
-                // TODO start repeat thread
-                let event = SurfaceEvent::Keyboard {
-                    event: KeyboardEvent::Key {
+                    event_queue.enter_surface(&surface);
+                    event_queue.queue_event(KeyboardEvent::Enter { rawkeys, keysyms });
+                }
+                Event::Leave {
+                    surface: _,
+                    serial: _,
+                } => {
+                    // TODO abort repeat
+                    event_queue.queue_event(KeyboardEvent::Leave);
+                }
+                Event::Key {
+                    serial: _,
+                    time,
+                    key: rawkey,
+                    state: keystate,
+                } => {
+                    let keysym = state.get_sym(rawkey);
+                    let utf8 = match keystate {
+                        KeyState::Pressed => state
+                            .compose(keysym)
+                            .ok()
+                            .unwrap_or_else(|| state.get_utf8(rawkey)),
+                        KeyState::Released => None,
+                    };
+                    // TODO start repeat thread
+                    event_queue.queue_event(KeyboardEvent::Key {
                         rawkey,
                         keysym,
-                        state,
+                        state: keystate,
                         utf8,
                         time,
-                    }
-                };
-                event_source.as_ref().unwrap().push_event(event);
+                    });
+                }
             }
-        }
-    }, ())
+        },
+        (),
+    )
 }
 
 /// Events received from a mapped keyboard

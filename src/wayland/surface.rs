@@ -1,20 +1,19 @@
+//! Surface handling
+use crate::wayland::compositor::{CompositorRequests, WlCompositor};
+use crate::wayland::compositor::{SubcompositorRequests, WlSubcompositor};
+use crate::wayland::event_queue::{EventDrain, EventQueue, EventSource};
+use crate::wayland::output::{OutputUserData, WlOutput};
+use crate::wayland::seat::SeatEvent;
 use std::sync::{Arc, Mutex};
-use wayland_client::Proxy;
-pub use wayland_client::protocol::wl_surface::WlSurface;
-pub use wayland_client::protocol::wl_surface::RequestsTrait as SurfaceRequests;
-pub use wayland_client::protocol::wl_subsurface::WlSubsurface;
 pub use wayland_client::protocol::wl_subsurface::RequestsTrait as SubsurfaceRequests;
+pub use wayland_client::protocol::wl_subsurface::WlSubsurface;
 use wayland_client::protocol::wl_surface::Event;
-use crate::wayland::compositor::{WlCompositor, CompositorRequests};
-use crate::wayland::compositor::{WlSubcompositor, SubcompositorRequests};
-use crate::wayland::data_device::{DndEvent as DataDeviceEvent};
-use crate::wayland::event_queue::{EventQueue, EventSource, EventDrain};
-use crate::wayland::keyboard::KeyboardEvent;
-use crate::wayland::output::{WlOutput, OutputUserData};
-use crate::wayland::pointer::PointerEvent;
-use crate::wayland::touch::TouchEvent;
+pub use wayland_client::protocol::wl_surface::RequestsTrait as SurfaceRequests;
+pub use wayland_client::protocol::wl_surface::WlSurface;
+use wayland_client::Proxy;
 
 #[derive(Clone)]
+/// Handles `wl_surface`s
 pub struct SurfaceManager {
     event_drain: EventDrain<SurfaceManagerEvent>,
     compositor: Proxy<WlCompositor>,
@@ -23,6 +22,7 @@ pub struct SurfaceManager {
 }
 
 impl SurfaceManager {
+    /// Creates a new `SurfaceManager`
     pub fn new(
         event_drain: EventDrain<SurfaceManagerEvent>,
         compositor: Proxy<WlCompositor>,
@@ -36,29 +36,36 @@ impl SurfaceManager {
         }
     }
 
+    /// Creates a new `wl_surface`
     pub fn create_surface(&self) -> Proxy<WlSurface> {
-        let surface = self.compositor
+        let surface = self
+            .compositor
             .create_surface(move |surface| {
-                surface.implement(move |event, surface| {
-                    let mut user_data = surface
-                        .user_data::<Mutex<SurfaceUserData>>()
-                        .unwrap()
-                        .lock()
-                        .unwrap();
-                    match event {
-                        Event::Enter { output } => {
-                            user_data.enter(output);
+                surface.implement(
+                    move |event, surface| {
+                        let mut user_data = surface
+                            .user_data::<Mutex<SurfaceUserData>>()
+                            .unwrap()
+                            .lock()
+                            .unwrap();
+                        match event {
+                            Event::Enter { output } => {
+                                user_data.enter(output);
+                            }
+                            Event::Leave { output } => {
+                                user_data.leave(&output);
+                            }
                         }
-                        Event::Leave { output } => {
-                            user_data.leave(&output);
-                        }
-                    }
-                }, Mutex::new(SurfaceUserData::new()))
-            }).unwrap();
+                    },
+                    Mutex::new(SurfaceUserData::new()),
+                )
+            })
+            .unwrap();
         self.surfaces.lock().unwrap().push(surface.clone());
         surface
     }
 
+    /// Creates a new `wl_subsurface`
     pub fn create_subsurface(
         &self,
         surface: &Proxy<WlSurface>,
@@ -71,35 +78,35 @@ impl SurfaceManager {
             .unwrap()
     }
 
-    pub(crate) fn handle_events(&self) {
+    /// Processes it's event queue
+    pub fn handle_events(&self) {
         let surfaces = self.surfaces.lock().unwrap();
-        self.event_drain.poll_events(|event| {
-            match event {
-                SurfaceManagerEvent::OutputLeave { output } => {
-                    for surface in &*surfaces {
-                        surface
-                            .user_data::<Mutex<SurfaceUserData>>()
-                            .unwrap()
-                            .lock()
-                            .unwrap()
-                            .leave(&output);
-                    }
+        self.event_drain.poll_events(|event| match event {
+            SurfaceManagerEvent::OutputLeave { output } => {
+                for surface in &*surfaces {
+                    surface
+                        .user_data::<Mutex<SurfaceUserData>>()
+                        .unwrap()
+                        .lock()
+                        .unwrap()
+                        .leave(&output);
                 }
-                SurfaceManagerEvent::OutputScale { .. } => {
-                    for surface in &*surfaces {
-                        surface
-                            .user_data::<Mutex<SurfaceUserData>>()
-                            .unwrap()
-                            .lock()
-                            .unwrap()
-                            .update_scale_factor();
-                    }
+            }
+            SurfaceManagerEvent::OutputScale { .. } => {
+                for surface in &*surfaces {
+                    surface
+                        .user_data::<Mutex<SurfaceUserData>>()
+                        .unwrap()
+                        .lock()
+                        .unwrap()
+                        .update_scale_factor();
                 }
             }
         });
     }
 }
 
+/// The `wl_surface` user data
 pub struct SurfaceUserData {
     pub(crate) event_source: EventSource<SurfaceEvent>,
     event_drain: EventDrain<SurfaceEvent>,
@@ -108,6 +115,7 @@ pub struct SurfaceUserData {
 }
 
 impl SurfaceUserData {
+    /// Creates a new `SurfaceUserData`
     pub fn new() -> Self {
         let (source, drain) = EventQueue::new();
         SurfaceUserData {
@@ -140,10 +148,12 @@ impl SurfaceUserData {
         }
         if self.scale_factor != scale_factor {
             self.scale_factor = scale_factor;
-            self.event_source.push_event(SurfaceEvent::Scale { scale_factor });
+            self.event_source
+                .push_event(SurfaceEvent::Scale { scale_factor });
         }
     }
 
+    /// Process it's event queue
     pub fn poll_events<F: FnMut(SurfaceEvent, &SurfaceUserData)>(&self, mut cb: F) {
         self.event_drain.poll_events(|event| {
             cb(event, self);
@@ -152,16 +162,35 @@ impl SurfaceUserData {
 }
 
 #[derive(Clone)]
+/// Events the `SurfaceManager` needs to know about
 pub enum SurfaceManagerEvent {
-    OutputScale { output: Proxy<WlOutput>, factor: u32 },
-    OutputLeave { output: Proxy<WlOutput> },
+    /// Output scale factor changed
+    OutputScale {
+        /// The `wl_output`
+        output: Proxy<WlOutput>,
+        /// New scale factor
+        factor: u32,
+    },
+    /// Output was disconnected
+    OutputLeave {
+        /// The `wl_output`
+        output: Proxy<WlOutput>,
+    },
 }
 
 #[derive(Clone)]
+/// Possible events generated by a surface that you need to handle
 pub enum SurfaceEvent {
-    Scale { scale_factor: u32 },
-    Pointer { event: PointerEvent },
-    Keyboard { event: KeyboardEvent },
-    Touch { event: TouchEvent },
-    DataDevice { event: DataDeviceEvent },
+    /// The surface scale factor has changed
+    Scale {
+        /// New scale factor
+        scale_factor: u32,
+    },
+    /// A seat event was received
+    Seat {
+        /// Seat that sent the event
+        seat_id: u32,
+        /// The sent event
+        event: SeatEvent,
+    },
 }

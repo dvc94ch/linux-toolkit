@@ -1,16 +1,19 @@
+//! Uses `xkbcommon` to keep track of keyboard state
+use crate::locale::get_locale_ctype;
 use std::os::unix::io::RawFd;
+use xkbcommon::xkb::compose::{FeedResult, Status as ComposeStatus};
+use xkbcommon::xkb::compose::{State as ComposeState, Table as ComposeTable};
+use xkbcommon::xkb::compose::{COMPILE_NO_FLAGS, STATE_NO_FLAGS};
 use xkbcommon::xkb::{Context, Keymap, State};
 pub use xkbcommon::xkb::{Keycode, Keysym};
-use xkbcommon::xkb::{KEYMAP_FORMAT_TEXT_V1, STATE_MODS_EFFECTIVE};
 use xkbcommon::xkb::{CONTEXT_NO_FLAGS, KEYMAP_COMPILE_NO_FLAGS};
-use xkbcommon::xkb::{MOD_NAME_SHIFT, MOD_NAME_CAPS, MOD_NAME_CTRL, MOD_NAME_ALT,
-                     MOD_NAME_NUM, MOD_NAME_LOGO};
-use xkbcommon::xkb::compose::{Table as ComposeTable, State as ComposeState};
-use xkbcommon::xkb::compose::{COMPILE_NO_FLAGS, STATE_NO_FLAGS};
-use xkbcommon::xkb::compose::{FeedResult, Status as ComposeStatus};
-use crate::locale::get_locale_ctype;
+use xkbcommon::xkb::{KEYMAP_FORMAT_TEXT_V1, STATE_MODS_EFFECTIVE};
+use xkbcommon::xkb::{
+    MOD_NAME_ALT, MOD_NAME_CAPS, MOD_NAME_CTRL, MOD_NAME_LOGO, MOD_NAME_NUM, MOD_NAME_SHIFT,
+};
 
-pub struct KbState {
+/// The state of a keyboard
+pub struct KeyboardState {
     context: Context,
     keymap: Option<Keymap>,
     state: Option<State>,
@@ -19,17 +22,15 @@ pub struct KbState {
     repeat_info: Option<RepeatInfo>,
 }
 
-impl KbState {
+impl KeyboardState {
+    /// Creates a new `KeyboardState`
     pub fn new() -> Self {
         let locale = get_locale_ctype();
         let context = Context::new(CONTEXT_NO_FLAGS);
-        let compose_table = ComposeTable::new_from_locale(
-            &context,
-            locale.as_str(),
-            COMPILE_NO_FLAGS,
-        ).unwrap();
+        let compose_table =
+            ComposeTable::new_from_locale(&context, locale.as_str(), COMPILE_NO_FLAGS).unwrap();
         let compose_state = ComposeState::new(&compose_table, STATE_NO_FLAGS);
-        KbState {
+        KeyboardState {
             context,
             keymap: None,
             state: None,
@@ -39,27 +40,27 @@ impl KbState {
         }
     }
 
-    pub fn load_keymap_from_fd(
-        &mut self,
-        fd: RawFd,
-        size: usize,
-    ) {
+    /// Loads a keymap from a file descriptor
+    pub fn load_keymap_from_fd(&mut self, fd: RawFd, size: usize) {
         let keymap = Keymap::new_from_fd(
             &self.context,
             fd,
             size,
             KEYMAP_FORMAT_TEXT_V1,
             KEYMAP_COMPILE_NO_FLAGS,
-        ).unwrap();
+        )
+        .unwrap();
         let state = State::new(&keymap);
         self.keymap = Some(keymap);
         self.state = Some(state);
     }
 
+    /// Sets the keyboard repeat rate and delay
     pub fn set_repeat_info(&mut self, rate: u32, delay: u32) {
         self.repeat_info = Some(RepeatInfo::new(rate, delay));
     }
 
+    /// Updates the keyboard modifiers
     pub fn update_modifiers(
         &mut self,
         mods_depressed: u32,
@@ -78,10 +79,12 @@ impl KbState {
         ModifiersState::from_xkb_state(&self.state.as_ref().unwrap())
     }
 
+    /// Gets the keysym of a keycode
     pub fn get_sym(&mut self, rawkey: Keycode) -> Keysym {
         self.state.as_mut().unwrap().key_get_one_sym(rawkey + 8)
     }
 
+    /// Gets the utf8 representation of a keycode if one exists
     pub fn get_utf8(&mut self, rawkey: Keycode) -> Option<String> {
         let utf8 = self.state.as_mut().unwrap().key_get_utf8(rawkey + 8);
         if utf8.is_empty() {
@@ -91,21 +94,20 @@ impl KbState {
         }
     }
 
-    pub fn compose(&mut self, keysym: Keysym) -> Option<Option<String>> {
+    /// Feeds the compose state machine
+    pub fn compose(&mut self, keysym: Keysym) -> Result<Option<String>, ()> {
         match self.compose_state.feed(keysym) {
-            FeedResult::Accepted => {
-                match self.compose_state.status() {
-                    ComposeStatus::Nothing => None,
-                    ComposeStatus::Composed => Some(self.compose_state.utf8()),
-                    _ => Some(None),
-                }
+            FeedResult::Accepted => match self.compose_state.status() {
+                ComposeStatus::Nothing => Err(()),
+                ComposeStatus::Composed => Ok(self.compose_state.utf8()),
+                _ => Ok(None),
             },
-            FeedResult::Ignored => None,
+            FeedResult::Ignored => Err(()),
         }
     }
 }
 
-unsafe impl Send for KbState {}
+unsafe impl Send for KeyboardState {}
 
 /// Represents the current state of the keyboard modifiers
 ///
@@ -132,46 +134,25 @@ pub struct ModifiersState {
 }
 
 impl ModifiersState {
-    pub fn from_xkb_state(state: &State) -> ModifiersState {
+    fn from_xkb_state(state: &State) -> ModifiersState {
         ModifiersState {
-            ctrl: state.mod_name_is_active(
-                &MOD_NAME_CTRL,
-                STATE_MODS_EFFECTIVE,
-            ),
-            alt: state.mod_name_is_active(
-                &MOD_NAME_ALT,
-                STATE_MODS_EFFECTIVE,
-            ),
-            shift: state.mod_name_is_active(
-                &MOD_NAME_SHIFT,
-                STATE_MODS_EFFECTIVE,
-            ),
-            caps_lock: state.mod_name_is_active(
-                &MOD_NAME_CAPS,
-                STATE_MODS_EFFECTIVE,
-            ),
-            logo: state.mod_name_is_active(
-                &MOD_NAME_LOGO,
-                STATE_MODS_EFFECTIVE,
-            ),
-            num_lock: state.mod_name_is_active(
-                &MOD_NAME_NUM,
-                STATE_MODS_EFFECTIVE,
-            ),
+            ctrl: state.mod_name_is_active(&MOD_NAME_CTRL, STATE_MODS_EFFECTIVE),
+            alt: state.mod_name_is_active(&MOD_NAME_ALT, STATE_MODS_EFFECTIVE),
+            shift: state.mod_name_is_active(&MOD_NAME_SHIFT, STATE_MODS_EFFECTIVE),
+            caps_lock: state.mod_name_is_active(&MOD_NAME_CAPS, STATE_MODS_EFFECTIVE),
+            logo: state.mod_name_is_active(&MOD_NAME_LOGO, STATE_MODS_EFFECTIVE),
+            num_lock: state.mod_name_is_active(&MOD_NAME_NUM, STATE_MODS_EFFECTIVE),
         }
     }
 }
 
-pub struct RepeatInfo {
+struct RepeatInfo {
     rate: u32,
     delay: u32,
 }
 
 impl RepeatInfo {
     pub fn new(rate: u32, delay: u32) -> Self {
-        RepeatInfo {
-            rate,
-            delay,
-        }
+        RepeatInfo { rate, delay }
     }
 }
