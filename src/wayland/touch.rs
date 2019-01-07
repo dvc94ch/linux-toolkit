@@ -17,19 +17,19 @@ pub fn implement_touch(
                 surface,
                 x,
                 y,
-                serial: _,
+                serial,
                 time,
                 id,
             } => {
                 event_queue.enter_surface(&surface);
-                event_queue.queue_event(TouchEvent::Down { x, y, time, id });
+                event_queue.queue_event(TouchEvent::Down { x, y, time, id, serial });
             }
             Event::Up {
-                serial: _,
+                serial,
                 time,
                 id,
             } => {
-                event_queue.queue_event(TouchEvent::Up { time, id });
+                event_queue.queue_event(TouchEvent::Up { time, id, serial });
             }
             Event::Motion { x, y, time, id } => {
                 event_queue.queue_event(TouchEvent::Motion { x, y, time, id });
@@ -58,6 +58,8 @@ pub enum TouchEvent {
         time: u32,
         /// The finger id of this event for multitouch handling
         id: i32,
+        /// serial number of the event
+        serial: u32,
     },
     /// A finger stopped touching your surface
     Up {
@@ -65,6 +67,8 @@ pub enum TouchEvent {
         time: u32,
         /// The finger id of this event for multitouch handling
         id: i32,
+        /// serial number of the event
+        serial: u32,
     },
     /// A finger was moved on your surface
     Motion {

@@ -1,24 +1,34 @@
 use byteorder::{NativeEndian, WriteBytesExt};
 use linux_toolkit::wayland::data_device::DataDeviceEvent;
 use linux_toolkit::wayland::environment::Environment;
+use linux_toolkit::wayland::layer_shell::{Layer, LayerShell, LayerSurfaceEvent, Layout};
 use linux_toolkit::wayland::mem_pool::{DoubleMemPool, MemPool};
-use linux_toolkit::wayland::output::OutputUserData;
 use linux_toolkit::wayland::pointer::PointerEvent;
-use linux_toolkit::wayland::seat::{SeatEvent, SeatUserData};
+use linux_toolkit::wayland::seat::SeatEvent;
 use linux_toolkit::wayland::shm::Format;
 use linux_toolkit::wayland::surface::{SurfaceRequests, WlSurface};
-use linux_toolkit::wayland::xdg_shell::{XdgShell, XdgSurfaceEvent};
+use linux_toolkit::wayland::toplevel_manager::{ToplevelManager, ToplevelEvent};
 use linux_toolkit::wayland::Proxy;
 use std::io::{BufWriter, Error, Seek, SeekFrom, Write};
-use std::sync::Mutex;
 
 fn main() {
     let mut environment = Environment::initialize(None).unwrap();
     let mut pools = DoubleMemPool::new(&environment.shm, || {}).unwrap();
-    let xdg_shell = XdgShell::new(&environment.globals, environment.surface_manager.clone());
-    print_outputs(&environment);
-    print_seats(&environment);
-    let xdg_surface = xdg_shell.create_shell_surface();
+    let layer_shell = LayerShell::new(&environment.globals, environment.surface_manager.clone());
+    let output = environment.output_manager
+        .outputs()
+        .lock()
+        .unwrap()
+        .first()
+        .unwrap()
+        .clone();
+    let layer_surface = layer_shell.create_shell_surface(
+        output,
+        Layer::Top,
+        Layout::BarBottom { height: 30 },
+        "bottom-bar".to_string(),
+    );
+    let toplevel_manager = ToplevelManager::new(&environment.globals);
 
     let mut close = false;
     let mut configure = false;
@@ -27,24 +37,24 @@ fn main() {
     let mut surface_scale_factor = 1;
 
     loop {
-        xdg_surface.poll_events(|event, _xdg_surface| match event {
-            XdgSurfaceEvent::Close => {
+        layer_surface.poll_events(|event, _layer_surface| match event {
+            LayerSurfaceEvent::Close => {
                 close = true;
             }
-            XdgSurfaceEvent::Configure { size, .. } => {
+            LayerSurfaceEvent::Configure { size, .. } => {
                 configure = true;
                 if surface_size != size {
                     surface_size = size;
                     resize = true;
                 }
             }
-            XdgSurfaceEvent::Scale { scale_factor } => {
+            LayerSurfaceEvent::Scale { scale_factor } => {
                 if scale_factor != surface_scale_factor {
                     surface_scale_factor = scale_factor;
                     resize = true;
                 }
             }
-            XdgSurfaceEvent::Seat { seat_id: _, event } => {
+            LayerSurfaceEvent::Seat { seat_id: _, event } => {
                 if let SeatEvent::Pointer {
                     event: PointerEvent::Enter { ref cursor, .. },
                 } = event
@@ -64,6 +74,13 @@ fn main() {
                 println!("{:?}", event);
             }
         });
+        /*toplevel_manager.poll_events(|event| match event {
+            ToplevelEvent::Done => {
+                //println!("app_id: {} title: {}",
+                //         user_data.app_id(),
+                //         user_data.title());
+            }
+        });*/
         if close {
             break;
         }
@@ -71,7 +88,7 @@ fn main() {
             if let Some(pool) = pools.pool() {
                 redraw(
                     pool,
-                    xdg_surface.surface(),
+                    layer_surface.surface(),
                     surface_size,
                     surface_scale_factor,
                 )
@@ -112,30 +129,4 @@ fn redraw(
     surface.set_buffer_scale(scale_factor as i32);
     surface.commit();
     Ok(())
-}
-
-fn print_outputs(environment: &Environment) {
-    let outputs = environment.output_manager.outputs().lock().unwrap();
-
-    for output in outputs.iter() {
-        let ud = output
-            .user_data::<Mutex<OutputUserData>>()
-            .unwrap()
-            .lock()
-            .unwrap();
-        println!("{:?}", *ud);
-    }
-}
-
-fn print_seats(environment: &Environment) {
-    let seats = environment.seat_manager.seats().lock().unwrap();
-
-    for seat in seats.iter() {
-        let ud = seat
-            .user_data::<Mutex<SeatUserData>>()
-            .unwrap()
-            .lock()
-            .unwrap();
-        println!("{}", ud.name());
-    }
 }

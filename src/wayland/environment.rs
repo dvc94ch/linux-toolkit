@@ -130,16 +130,22 @@ impl Environment {
         };
 
         environment.output_manager.handle_events();
+        environment.flush();
         environment.handle_events();
+        environment.flush();
         environment.handle_events();
 
         Ok(environment)
     }
 
+    /// Flush queued messages
+    pub fn flush(&self) {
+        self.display.flush().unwrap();
+    }
+
     /// Handles sending and receiving queued wayland messages and all internal
     /// event processing. It should be called on every event loop.
     pub fn handle_events(&mut self) {
-        self.display.flush().unwrap();
         self.event_queue.dispatch().unwrap();
         self.output_manager.handle_events();
         self.cursor_manager.handle_events();

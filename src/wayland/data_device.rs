@@ -16,7 +16,7 @@ use wayland_client::{GlobalManager, NewProxy, Proxy};
 /// Initializes the data device manager
 ///
 /// Fails if the compositor did not advertise `wl_data_device_manager`.
-pub(crate) fn initialize_data_device_manager(
+pub fn initialize_data_device_manager(
     globals: &GlobalManager,
 ) -> Proxy<WlDataDeviceManager> {
     globals
@@ -28,14 +28,14 @@ pub(crate) fn initialize_data_device_manager(
 
 /// Handles `wl_data_device` events and forwards the ones
 /// that need user handling to an event queue.
-pub(crate) fn implement_data_device(
+pub fn implement_data_device(
     data_device: NewProxy<WlDataDevice>,
     mut event_queue: SeatEventSource<DataDeviceEvent>,
 ) -> Proxy<WlDataDevice> {
     data_device.implement(
         move |event, data_device| match event {
             Event::Enter {
-                serial: _,
+                serial,
                 surface,
                 x,
                 y,
@@ -52,6 +52,7 @@ pub(crate) fn implement_data_device(
                     x,
                     y,
                     offer: user_data.current_dnd.clone(),
+                    serial,
                 });
             }
             Event::Motion { x, y, time } => {
@@ -85,7 +86,7 @@ pub(crate) fn implement_data_device(
 }
 
 /// `wl_data_device` user data
-pub(crate) struct DataDeviceUserData {
+pub struct DataDeviceUserData {
     /// The current selection
     selection: Option<DataOffer>,
     /// The current drag'n'drop
@@ -145,6 +146,8 @@ pub enum DataDeviceEvent {
         x: f64,
         /// vertical location on the surface
         y: f64,
+        /// serial number of the event
+        serial: u32,
     },
     /// The drag'n'drop offer moved on the surface
     Motion {
@@ -167,6 +170,19 @@ pub enum DataDeviceEvent {
 /// source to `None` will clear the selection.
 pub fn set_selection(data_device: &Proxy<WlDataDevice>, source: &Option<DataSource>, serial: u32) {
     data_device.set_selection(source.as_ref().map(|s| &s.source), serial);
+}
+
+/// Get the current selection
+///
+/// Correspond to traditional copy/paste behavior.
+pub fn get_selection(data_device: &Proxy<WlDataDevice>) -> Option<DataOffer> {
+    data_device
+        .user_data::<Mutex<DataDeviceUserData>>()
+        .unwrap()
+        .lock()
+        .unwrap()
+        .selection
+        .clone()
 }
 
 /// Start a drag'n'drop offer

@@ -32,24 +32,30 @@ pub fn implement_pointer(
                 cursor.enter_surface(pointer.clone(), serial);
 
                 event_queue.enter_surface(&surface);
-                event_queue.queue_event(PointerEvent::Enter { cursor, x, y });
+                event_queue.queue_event(PointerEvent::Enter {
+                    cursor,
+                    x,
+                    y,
+                    serial,
+                });
             }
             Event::Leave {
                 surface: _,
-                serial: _,
+                serial,
             } => {
-                event_queue.queue_event(PointerEvent::Leave);
+                event_queue.queue_event(PointerEvent::Leave { serial });
             }
             Event::Button {
                 button,
                 state,
                 time,
-                serial: _,
+                serial,
             } => {
                 event_queue.queue_event(PointerEvent::Button {
                     button,
                     state,
                     time,
+                    serial,
                 });
             }
             Event::Motion {
@@ -90,9 +96,14 @@ pub enum PointerEvent {
         x: f64,
         /// vertical location on the surface
         y: f64,
+        /// serial number of the event
+        serial: u32,
     },
     /// A `wl_pointer` left your surface
-    Leave,
+    Leave {
+        /// serial number of the event
+        serial: u32,
+    },
     /// A mouse button was pressed or released
     Button {
         /// The button that was pressed
@@ -101,6 +112,8 @@ pub enum PointerEvent {
         state: ButtonState,
         /// The time of this event
         time: u32,
+        /// serial number of the event
+        serial: u32,
     },
     /// The mouse moved
     Motion {

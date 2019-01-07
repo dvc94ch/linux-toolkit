@@ -6,15 +6,29 @@ use std::sync::{Arc, Mutex};
 pub struct EventQueue;
 
 /// A cloneable `EventSource` interface to an `EventQueue`
-#[derive(Clone)]
 pub struct EventSource<T> {
     queue: Arc<Mutex<VecDeque<T>>>,
 }
 
+impl<T> Clone for EventSource<T> {
+    fn clone(&self) -> EventSource<T> {
+        EventSource {
+            queue: self.queue.clone(),
+        }
+    }
+}
+
 /// An `EventDrain` interface to an `EventQueue`
-#[derive(Clone)]
 pub struct EventDrain<T> {
     queue: Arc<Mutex<VecDeque<T>>>,
+}
+
+impl<T> Clone for EventDrain<T> {
+    fn clone(&self) -> EventDrain<T> {
+        EventDrain {
+            queue: self.queue.clone(),
+        }
+    }
 }
 
 impl EventQueue {

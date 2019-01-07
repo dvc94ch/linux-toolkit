@@ -33,15 +33,18 @@ pub fn implement_keyboard(
                     mods_latched,
                     mods_locked,
                     group,
-                    serial: _,
+                    serial,
                 } => {
                     let modifiers =
                         state.update_modifiers(mods_depressed, mods_latched, mods_locked, group);
-                    event_queue.queue_event(KeyboardEvent::Modifiers { modifiers });
+                    event_queue.queue_event(KeyboardEvent::Modifiers {
+                        modifiers,
+                        serial,
+                    });
                 }
                 Event::Enter {
                     surface,
-                    serial: _,
+                    serial,
                     keys,
                 } => {
                     let rawkeys: Vec<Keycode> = unsafe {
@@ -54,17 +57,23 @@ pub fn implement_keyboard(
                         .collect();
 
                     event_queue.enter_surface(&surface);
-                    event_queue.queue_event(KeyboardEvent::Enter { rawkeys, keysyms });
+                    event_queue.queue_event(KeyboardEvent::Enter {
+                        rawkeys,
+                        keysyms,
+                        serial,
+                    });
                 }
                 Event::Leave {
                     surface: _,
-                    serial: _,
+                    serial,
                 } => {
                     // TODO abort repeat
-                    event_queue.queue_event(KeyboardEvent::Leave);
+                    event_queue.queue_event(KeyboardEvent::Leave {
+                        serial,
+                    });
                 }
                 Event::Key {
-                    serial: _,
+                    serial,
                     time,
                     key: rawkey,
                     state: keystate,
@@ -84,6 +93,7 @@ pub fn implement_keyboard(
                         state: keystate,
                         utf8,
                         time,
+                        serial,
                     });
                 }
             }
@@ -97,15 +107,22 @@ pub fn implement_keyboard(
 pub enum KeyboardEvent {
     /// The keyboard focus has entered a surface
     Enter {
+        /// serial number of the event
+        serial: u32,
         /// raw values of the currently pressed keys
         rawkeys: Vec<Keycode>,
         /// interpreted symbols of the currently pressed keys
         keysyms: Vec<Keysym>,
     },
     /// The keyboard focus has left a surface
-    Leave,
+    Leave {
+        /// serial number of the event
+        serial: u32,
+    },
     /// A key event occurred
     Key {
+        /// serial number of the event
+        serial: u32,
         /// time at which the keypress occurred
         time: u32,
         /// raw value of the key
@@ -118,8 +135,6 @@ pub enum KeyboardEvent {
         ///
         /// will always be `None` on key release events
         utf8: Option<String>,
-        // physical or emulated keypress due to repeat info
-        //is_repeat: bool,
     },
     /// Repetition information advertising
     RepeatInfo {
@@ -130,6 +145,8 @@ pub enum KeyboardEvent {
     },
     /// The key modifiers have changed state
     Modifiers {
+        /// serial number of the event
+        serial: u32,
         /// current state of the modifiers
         modifiers: ModifiersState,
     },

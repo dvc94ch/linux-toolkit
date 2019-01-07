@@ -3,7 +3,7 @@ use crate::wayland::data_device::{DataDeviceManagerRequests, DndAction, WlDataDe
 use wayland_client::protocol::wl_data_source::Event;
 pub use wayland_client::protocol::wl_data_source::RequestsTrait as DataSourceRequests;
 pub use wayland_client::protocol::wl_data_source::WlDataSource;
-use wayland_client::{Proxy, QueueToken};
+use wayland_client::Proxy;
 
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::{fs, io};
@@ -112,7 +112,7 @@ impl DataSource {
     /// either via selection (aka copy/paste) or via a drag and drop.
     pub fn new<Impl>(
         mgr: &Proxy<WlDataDeviceManager>,
-        mime_types: &[&str],
+        mime_types: &[String],
         mut implem: Impl,
     ) -> DataSource
     where
@@ -127,40 +127,8 @@ impl DataSource {
             })
             .expect("Provided a dead data device manager to create a data source.");
 
-        for &mime in mime_types {
-            source.offer(mime.into());
-        }
-
-        DataSource { source }
-    }
-
-    /// Create a data source
-    ///
-    /// Like `new`, but the implementation does not require to
-    /// be `Send`.
-    ///
-    /// **unsafety**: for the same reasons as `NewProxy::implement_nonsend`
-    pub unsafe fn new_nonsend<Impl>(
-        mgr: &Proxy<WlDataDeviceManager>,
-        mime_types: &[&str],
-        mut implem: Impl,
-        token: &QueueToken,
-    ) -> DataSource
-    where
-        Impl: FnMut(DataSourceEvent) + 'static,
-    {
-        let source = mgr
-            .create_data_source(|source| {
-                source.implement_nonsend(
-                    move |evt, source: Proxy<_>| data_source_impl(evt, &source, &mut implem),
-                    (),
-                    token,
-                )
-            })
-            .expect("Provided a dead data device manager to create a data source.");
-
-        for &mime in mime_types {
-            source.offer(mime.into());
+        for mime in mime_types {
+            source.offer(mime.clone());
         }
 
         DataSource { source }

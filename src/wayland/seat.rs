@@ -112,6 +112,22 @@ impl SeatManager {
             .map(|seat| seat.clone())
     }
 
+    /// The `wl_data_device` associated with `seat_id`
+    pub fn get_data_device(&self, seat_id: u32) -> Option<Proxy<WlDataDevice>> {
+        let seat = self.get_seat(seat_id);
+        if seat.is_none() {
+            return None;
+        }
+        seat
+            .unwrap()
+            .user_data::<Mutex<SeatUserData>>()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .data_device()
+            .map(|data_device| data_device.clone())
+    }
+
     /// Processes it's event queues
     pub fn handle_events(&self) {
         self.event_drain.poll_events(|event| match event {
