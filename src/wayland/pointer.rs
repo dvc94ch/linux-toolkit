@@ -1,5 +1,5 @@
 //! Pointer handling
-use crate::wayland::cursor::{Cursor, CursorManager};
+use crate::wayland::cursor::Cursor;
 use crate::wayland::seat::SeatEventSource;
 use std::sync::Mutex;
 use wayland_client::protocol::wl_pointer::Event;
@@ -13,7 +13,7 @@ use wayland_client::{NewProxy, Proxy};
 pub fn implement_pointer(
     pointer: NewProxy<WlPointer>,
     mut event_queue: SeatEventSource<PointerEvent>,
-    cursor_manager: CursorManager,
+    cursor: Cursor,
 ) -> Proxy<WlPointer> {
     pointer.implement(
         move |event, pointer| match event {
@@ -84,7 +84,7 @@ pub fn implement_pointer(
                 event_queue.queue_event(PointerEvent::Frame);
             }
         },
-        Mutex::new(PointerUserData::new(cursor_manager)),
+        Mutex::new(PointerUserData::new(cursor)),
     )
 }
 
@@ -159,23 +159,16 @@ pub enum PointerEvent {
     Frame,
 }
 
-struct PointerUserData {
-    cursor_manager: CursorManager,
+/// The `wl_pointer` user data
+pub struct PointerUserData {
     cursor: Cursor,
 }
 
 impl PointerUserData {
-    pub fn new(cursor_manager: CursorManager) -> Self {
-        let cursor = cursor_manager.new_cursor(None);
+    /// Creates a new `PointerUserData`
+    pub fn new(cursor: Cursor) -> Self {
         PointerUserData {
-            cursor_manager,
             cursor,
         }
-    }
-}
-
-impl Drop for PointerUserData {
-    fn drop(&mut self) {
-        self.cursor_manager.remove_cursor(&self.cursor)
     }
 }

@@ -1,5 +1,5 @@
 //! Seat handling
-use crate::wayland::cursor::CursorManager;
+use crate::wayland::cursor::{Cursor, CursorManager};
 use crate::wayland::data_device_manager::{
     DataDeviceManagerRequests, WlDataDeviceManager,
 };
@@ -127,6 +127,21 @@ impl SeatManager {
             .map(|seat| seat.clone())
     }
 
+    /// The `Cursor` associated with `seat_id`
+    pub fn get_cursor(&self, seat_id: u32) -> Option<Cursor> {
+        let seat = self.get_seat(seat_id);
+        if seat.is_none() {
+            return None;
+        }
+        seat.unwrap()
+            .user_data::<Mutex<SeatUserData>>()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .cursor()
+            .map(|cursor| cursor.clone())
+    }
+
     /// The `wl_data_device` associated with `seat_id`
     pub fn get_data_device(&self, seat_id: u32) -> Option<DataDevice> {
         let seat = self.get_seat(seat_id);
@@ -164,6 +179,7 @@ impl SeatManager {
 pub struct SeatUserData {
     name: String,
     pointer: Option<Proxy<WlPointer>>,
+    cursor: Option<Cursor>,
     keyboard: Option<Proxy<WlKeyboard>>,
     touch: Option<Proxy<WlTouch>>,
     data_device: Option<Proxy<WlDataDevice>>,
@@ -175,6 +191,7 @@ impl SeatUserData {
         SeatUserData {
             name: String::new(),
             pointer: None,
+            cursor: None,
             keyboard: None,
             touch: None,
             data_device: None,
@@ -192,16 +209,23 @@ impl SeatUserData {
         cursor_manager: &CursorManager,
     ) {
         if self.pointer.is_none() {
-            self.pointer = seat
-                .get_pointer(|pointer| {
-                    let event_queue = SeatEventSource::new(seat.id());
-                    implement_pointer(
-                        pointer,
-                        event_queue,
-                        cursor_manager.clone(),
-                    )
-                })
-                .ok();
+            let cursor = cursor_manager.new_cursor(None);
+            self.pointer = {
+                let cursor = cursor.clone();
+                seat
+                    .get_pointer(move |pointer| {
+                        let event_queue = SeatEventSource::new(seat.id());
+                        implement_pointer(
+                            pointer,
+                            event_queue,
+                            cursor,
+                        )
+                    })
+                    .ok()
+            };
+            if self.pointer.is_some() {
+                self.cursor = Some(cursor);
+            }
         }
     }
 
@@ -210,12 +234,21 @@ impl SeatUserData {
         self.pointer.as_ref()
     }
 
+    /// Returns the seat cursor if there is one
+    pub fn cursor(&self) -> Option<&Cursor> {
+        self.cursor.as_ref()
+    }
+
     fn drop_pointer(&mut self) {
         if self.pointer.is_some() {
             let pointer = self.pointer.take().unwrap();
             if pointer.version() >= 3 {
                 pointer.release();
             }
+        }
+        if self.cursor.is_some() {
+            let cursor = self.cursor.take();
+            self.cursor_manager.remove_cursor(cursor);
         }
     }
 
