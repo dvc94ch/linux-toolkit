@@ -1,13 +1,12 @@
 //! Data offer handling
-use wayland_client::protocol::wl_data_device_manager::DndAction;
+use crate::wayland::data_device_manager::DndAction;
+use crate::wayland::pipe::{FromRawFd, ReadPipe};
 use wayland_client::protocol::wl_data_offer::Event;
 pub use wayland_client::protocol::wl_data_offer::RequestsTrait as OfferRequests;
 pub use wayland_client::protocol::wl_data_offer::WlDataOffer;
 use wayland_client::{NewProxy, Proxy};
 
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::sync::{Arc, Mutex};
-use std::{fs, io};
 
 struct Inner {
     mime_types: Vec<String>,
@@ -136,36 +135,5 @@ impl std::fmt::Debug for DataOffer {
 impl Drop for DataOffer {
     fn drop(&mut self) {
         self.offer.destroy();
-    }
-}
-
-/// A file descriptor that can only be written to
-pub struct ReadPipe {
-    file: fs::File,
-}
-
-impl io::Read for ReadPipe {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.file.read(buf)
-    }
-}
-
-impl FromRawFd for ReadPipe {
-    unsafe fn from_raw_fd(fd: RawFd) -> ReadPipe {
-        ReadPipe {
-            file: FromRawFd::from_raw_fd(fd),
-        }
-    }
-}
-
-impl AsRawFd for ReadPipe {
-    fn as_raw_fd(&self) -> RawFd {
-        self.file.as_raw_fd()
-    }
-}
-
-impl IntoRawFd for ReadPipe {
-    fn into_raw_fd(self) -> RawFd {
-        self.file.into_raw_fd()
     }
 }

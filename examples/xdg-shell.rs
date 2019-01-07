@@ -2,7 +2,7 @@ use byteorder::{NativeEndian, WriteBytesExt};
 use linux_toolkit::wayland::clipboard::{Clipboard, ClipboardEvent};
 use linux_toolkit::wayland::data_device::DataDeviceEvent;
 use linux_toolkit::wayland::environment::Environment;
-use linux_toolkit::wayland::keyboard::{KeyboardEvent, KeyState};
+use linux_toolkit::wayland::keyboard::{KeyState, KeyboardEvent};
 use linux_toolkit::wayland::mem_pool::{DoubleMemPool, MemPool};
 use linux_toolkit::wayland::output::OutputUserData;
 use linux_toolkit::wayland::pointer::PointerEvent;
@@ -19,20 +19,21 @@ fn main() {
     let mut environment = Environment::initialize(None).unwrap();
     let mut pools = DoubleMemPool::new(&environment.shm, || {}).unwrap();
     let xdg_shell = XdgShell::new(&environment.globals, environment.surface_manager.clone());
+    let xdg_surface = xdg_shell.create_shell_surface();
+    let mut clipboard = Clipboard::new(
+        environment.seat_manager.clone(),
+        environment.data_source_manager.clone(),
+        vec!["text/plain;charset=utf-8".into()],
+    );
+
     print_outputs(&environment);
     print_seats(&environment);
-    let xdg_surface = xdg_shell.create_shell_surface();
 
     let mut close = false;
     let mut configure = false;
     let mut resize = true;
     let mut surface_size = None;
     let mut surface_scale_factor = 1;
-    let mut clipboard = Clipboard::new(
-        environment.data_device_manager.clone(),
-        environment.seat_manager.clone(),
-        vec!("text/plain;charset=utf-8".into()),
-    );
 
     loop {
         xdg_surface.poll_events(|event, _xdg_surface| match event {
@@ -54,35 +55,40 @@ fn main() {
             }
             XdgSurfaceEvent::Seat { seat_id, event } => {
                 match &event {
-                    SeatEvent::Pointer { event } => {
-                        match event {
-                            PointerEvent::Enter { ref cursor, .. } => {
-                                cursor.change_cursor(Some("grabbing".into())).unwrap();
-                            }
-                            _ => {}
+                    SeatEvent::Pointer { event } => match event {
+                        PointerEvent::Enter { ref cursor, .. } => {
+                            cursor.change_cursor(Some("grabbing".into())).unwrap();
                         }
-                    }
-                    SeatEvent::Keyboard { event } => {
-                        match event {
-                            KeyboardEvent::Key { keysym, state, utf8, serial, .. } => {
-                                if *state == KeyState::Pressed {
-                                    if *keysym == KEY_Escape {
-                                        close = true;
-                                    } else if *utf8 == Some("y".into()) {
-                                        println!("set selection");
-                                        clipboard.set(seat_id, *serial);
-                                    } else if *utf8 == Some("p".into()) {
-                                        println!("get selection");
-                                        clipboard.get(seat_id);
-                                    }
+                        _ => {}
+                    },
+                    SeatEvent::Keyboard { event } => match event {
+                        KeyboardEvent::Key {
+                            keysym,
+                            state,
+                            utf8,
+                            serial,
+                            ..
+                        } => {
+                            if *state == KeyState::Pressed {
+                                if *keysym == KEY_Escape {
+                                    close = true;
+                                } else if *utf8 == Some("y".into()) {
+                                    println!("set selection");
+                                    clipboard.set(seat_id, *serial);
+                                } else if *utf8 == Some("p".into()) {
+                                    println!("get selection");
+                                    clipboard.get(seat_id);
                                 }
                             }
-                            _ => {}
                         }
-                    }
+                        _ => {}
+                    },
                     SeatEvent::DataDevice { event } => {
                         match event {
-                            DataDeviceEvent::Enter { offer: Some(ref offer), .. } => {
+                            DataDeviceEvent::Enter {
+                                offer: Some(ref offer),
+                                ..
+                            } => {
                                 // Application doesn't accept drag and drop offers
                                 offer.accept(None);
                             }
@@ -110,12 +116,26 @@ fn main() {
         }
         environment.flush();
         clipboard.poll_events(|event| match event {
-            ClipboardEvent::Get { seat_id: _, mut pipe, mime_type: _ } => {
+            ClipboardEvent::Get {
+                seat_id: _,
+                mut pipe,
+                mime_type: _,
+            } => {
                 let mut text = String::new();
                 pipe.read_to_string(&mut text).unwrap();
                 println!("selection: {}", text);
             }
-            ClipboardEvent::Set { seat_id: _, mut pipe, mime_type: _ } => {
+            ClipboardEvent::GetLocal {
+                seat_id: _,
+                mime_type: _,
+            } => {
+                println!("local selection: hello world!");
+            }
+            ClipboardEvent::Set {
+                seat_id: _,
+                mut pipe,
+                mime_type: _,
+            } => {
                 pipe.write(b"hello world!").unwrap();
             }
         });

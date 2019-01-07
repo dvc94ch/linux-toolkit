@@ -16,7 +16,7 @@ pub fn implement_pointer(
     cursor_manager: CursorManager,
 ) -> Proxy<WlPointer> {
     pointer.implement(
-        move |event, pointer| match event.clone() {
+        move |event, pointer| match event {
             Event::Enter {
                 surface,
                 surface_x: x,
@@ -39,10 +39,7 @@ pub fn implement_pointer(
                     serial,
                 });
             }
-            Event::Leave {
-                surface: _,
-                serial,
-            } => {
+            Event::Leave { surface: _, serial } => {
                 event_queue.queue_event(PointerEvent::Leave { serial });
             }
             Event::Button {

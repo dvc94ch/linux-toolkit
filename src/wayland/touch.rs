@@ -12,7 +12,7 @@ pub fn implement_touch(
     mut event_queue: SeatEventSource<TouchEvent>,
 ) -> Proxy<WlTouch> {
     touch.implement(
-        move |event, _touch| match event.clone() {
+        move |event, _touch| match event {
             Event::Down {
                 surface,
                 x,
@@ -22,13 +22,15 @@ pub fn implement_touch(
                 id,
             } => {
                 event_queue.enter_surface(&surface);
-                event_queue.queue_event(TouchEvent::Down { x, y, time, id, serial });
+                event_queue.queue_event(TouchEvent::Down {
+                    x,
+                    y,
+                    time,
+                    id,
+                    serial,
+                });
             }
-            Event::Up {
-                serial,
-                time,
-                id,
-            } => {
+            Event::Up { serial, time, id } => {
                 event_queue.queue_event(TouchEvent::Up { time, id, serial });
             }
             Event::Motion { x, y, time, id } => {

@@ -1,6 +1,6 @@
 //! Seat handling
 use crate::wayland::cursor::CursorManager;
-use crate::wayland::data_device::{DataDeviceManagerRequests, WlDataDeviceManager};
+use crate::wayland::data_device_manager::{DataDeviceManagerRequests, WlDataDeviceManager};
 use crate::wayland::event_queue::{EventDrain, EventSource};
 use crate::wayland::surface::{SurfaceEvent, SurfaceUserData, WlSurface};
 use std::marker::PhantomData;
@@ -13,7 +13,7 @@ use wayland_client::protocol::wl_seat::{Capability, Event};
 use wayland_client::Proxy;
 
 use crate::wayland::data_device::{
-    implement_data_device, DataDeviceEvent, DataDeviceRequests, WlDataDevice,
+    implement_data_device, DataDevice, DataDeviceEvent, DataDeviceRequests, WlDataDevice,
 };
 use crate::wayland::keyboard::{implement_keyboard, KeyboardEvent, KeyboardRequests, WlKeyboard};
 use crate::wayland::pointer::{implement_pointer, PointerEvent, PointerRequests, WlPointer};
@@ -113,19 +113,18 @@ impl SeatManager {
     }
 
     /// The `wl_data_device` associated with `seat_id`
-    pub fn get_data_device(&self, seat_id: u32) -> Option<Proxy<WlDataDevice>> {
+    pub fn get_data_device(&self, seat_id: u32) -> Option<DataDevice> {
         let seat = self.get_seat(seat_id);
         if seat.is_none() {
             return None;
         }
-        seat
-            .unwrap()
+        seat.unwrap()
             .user_data::<Mutex<SeatUserData>>()
             .unwrap()
             .lock()
             .unwrap()
             .data_device()
-            .map(|data_device| data_device.clone())
+            .map(|data_device| DataDevice::new(data_device.clone()))
     }
 
     /// Processes it's event queues

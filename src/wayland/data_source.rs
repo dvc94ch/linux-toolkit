@@ -1,17 +1,76 @@
 //! Data source handling
-use crate::wayland::data_device::{DataDeviceManagerRequests, DndAction, WlDataDeviceManager};
+use crate::wayland::data_device_manager::{
+    DataDeviceManagerRequests, DndAction, WlDataDeviceManager,
+};
+use crate::wayland::event_queue::{EventDrain, EventQueue, EventSource};
+use crate::wayland::pipe::{FromRawFd, WritePipe};
 use wayland_client::protocol::wl_data_source::Event;
 pub use wayland_client::protocol::wl_data_source::RequestsTrait as DataSourceRequests;
 pub use wayland_client::protocol::wl_data_source::WlDataSource;
-use wayland_client::Proxy;
+use wayland_client::{NewProxy, Proxy};
 
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
-use std::{fs, io};
+#[derive(Clone)]
+/// A `DataSourceManager` for creating `DataSource`s
+pub struct DataSourceManager {
+    data_device_manager: Proxy<WlDataDeviceManager>,
+}
 
-/// A data source for sending data though copy/paste or
-/// drag and drop
-pub struct DataSource {
-    pub(crate) source: Proxy<WlDataSource>,
+impl DataSourceManager {
+    /// Creates a new `DataSourceManager`
+    pub fn new(data_device_manager: Proxy<WlDataDeviceManager>) -> Self {
+        DataSourceManager {
+            data_device_manager,
+        }
+    }
+
+    /// Create a new data source
+    ///
+    /// You'll then need to provide it to a data device to send it
+    /// either via selection (aka copy/paste) or via a drag and drop.
+    pub fn create_data_source(&self, mime_types: &[String]) -> DataSource {
+        let (source, drain) = EventQueue::new();
+        let data_source = self
+            .data_device_manager
+            .create_data_source(|data_source| implement_data_source(data_source, source))
+            .unwrap();
+        for mime in mime_types {
+            data_source.offer(mime.to_owned());
+        }
+        DataSource::new(data_source, drain)
+    }
+}
+
+/// Handles `wl_data_source` events and forwards the ones
+/// that need user handling to an event queue.
+pub fn implement_data_source(
+    data_source: NewProxy<WlDataSource>,
+    event_queue: EventSource<DataSourceEvent>,
+) -> Proxy<WlDataSource> {
+    data_source.implement(
+        move |event, data_source| {
+            let event = match event {
+                Event::Target { mime_type } => DataSourceEvent::Target { mime_type },
+                Event::Send { mime_type, fd } => DataSourceEvent::Send {
+                    mime_type,
+                    pipe: unsafe { FromRawFd::from_raw_fd(fd) },
+                },
+                Event::Action { dnd_action } => DataSourceEvent::Action {
+                    action: DndAction::from_bits_truncate(dnd_action),
+                },
+                Event::Cancelled => {
+                    data_source.destroy();
+                    DataSourceEvent::Cancelled
+                }
+                Event::DndDropPerformed => DataSourceEvent::Dropped,
+                Event::DndFinished => {
+                    data_source.destroy();
+                    DataSourceEvent::Finished
+                }
+            };
+            event_queue.push_event(event);
+        },
+        (),
+    )
 }
 
 /// Possible events a data source needs to react to
@@ -79,92 +138,23 @@ pub enum DataSourceEvent {
     Finished,
 }
 
-fn data_source_impl<Impl>(evt: Event, source: &Proxy<WlDataSource>, implem: &mut Impl)
-where
-    Impl: FnMut(DataSourceEvent),
-{
-    let event = match evt {
-        Event::Target { mime_type } => DataSourceEvent::Target { mime_type },
-        Event::Send { mime_type, fd } => DataSourceEvent::Send {
-            mime_type,
-            pipe: unsafe { FromRawFd::from_raw_fd(fd) },
-        },
-        Event::Action { dnd_action } => DataSourceEvent::Action {
-            action: DndAction::from_bits_truncate(dnd_action),
-        },
-        Event::Cancelled => {
-            source.destroy();
-            DataSourceEvent::Cancelled
-        }
-        Event::DndDropPerformed => DataSourceEvent::Dropped,
-        Event::DndFinished => {
-            source.destroy();
-            DataSourceEvent::Finished
-        }
-    };
-    implem(event);
+/// Wraps a `wl_data_source` and a `EventDrain<DataSourceEvent>`
+pub struct DataSource {
+    data_source: Proxy<WlDataSource>,
+    event_drain: EventDrain<DataSourceEvent>,
 }
 
 impl DataSource {
-    /// Create a new data source
-    ///
-    /// You'll then need to provide it to a data device to send it
-    /// either via selection (aka copy/paste) or via a drag and drop.
-    pub fn new<Impl>(
-        mgr: &Proxy<WlDataDeviceManager>,
-        mime_types: &[String],
-        mut implem: Impl,
-    ) -> DataSource
-    where
-        Impl: FnMut(DataSourceEvent) + Send + 'static,
-    {
-        let source = mgr
-            .create_data_source(|source| {
-                source.implement(
-                    move |evt, source: Proxy<_>| data_source_impl(evt, &source, &mut implem),
-                    (),
-                )
-            })
-            .expect("Provided a dead data device manager to create a data source.");
-
-        for mime in mime_types {
-            source.offer(mime.clone());
-        }
-
-        DataSource { source }
-    }
-}
-
-/// A file descriptor that can only be written to
-pub struct WritePipe {
-    file: fs::File,
-}
-
-impl io::Write for WritePipe {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.file.write(buf)
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        self.file.flush()
-    }
-}
-
-impl FromRawFd for WritePipe {
-    unsafe fn from_raw_fd(fd: RawFd) -> WritePipe {
-        WritePipe {
-            file: FromRawFd::from_raw_fd(fd),
+    /// Creates a new `DataSource`
+    pub fn new(data_source: Proxy<WlDataSource>, event_drain: EventDrain<DataSourceEvent>) -> Self {
+        DataSource {
+            data_source,
+            event_drain,
         }
     }
-}
 
-impl AsRawFd for WritePipe {
-    fn as_raw_fd(&self) -> RawFd {
-        self.file.as_raw_fd()
-    }
-}
-
-impl IntoRawFd for WritePipe {
-    fn into_raw_fd(self) -> RawFd {
-        self.file.into_raw_fd()
+    /// Splits a `DataSource` into a `wl_data_source` and an `EventDrain`
+    pub fn split(self) -> (Proxy<WlDataSource>, EventDrain<DataSourceEvent>) {
+        (self.data_source, self.event_drain)
     }
 }

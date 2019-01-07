@@ -4,8 +4,8 @@ use std::os::unix::io::RawFd;
 use xkbcommon::xkb::compose::{FeedResult, Status as ComposeStatus};
 use xkbcommon::xkb::compose::{State as ComposeState, Table as ComposeTable};
 use xkbcommon::xkb::compose::{COMPILE_NO_FLAGS, STATE_NO_FLAGS};
+pub use xkbcommon::xkb::{keysyms, Keycode, Keysym};
 use xkbcommon::xkb::{Context, Keymap, State};
-pub use xkbcommon::xkb::{Keycode, Keysym, keysyms};
 use xkbcommon::xkb::{CONTEXT_NO_FLAGS, KEYMAP_COMPILE_NO_FLAGS};
 use xkbcommon::xkb::{KEYMAP_FORMAT_TEXT_V1, STATE_MODS_EFFECTIVE};
 use xkbcommon::xkb::{

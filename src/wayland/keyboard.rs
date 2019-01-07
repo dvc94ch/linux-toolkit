@@ -18,84 +18,74 @@ pub fn implement_keyboard(
     let mut state = KeyboardState::new();
 
     keyboard.implement(
-        move |event, _keyboard| {
-            match event.clone() {
-                Event::Keymap { format, fd, size } => {
-                    if KeymapFormat::XkbV1 == format {
-                        state.load_keymap_from_fd(fd, size as usize);
-                    }
+        move |event, _keyboard| match event {
+            Event::Keymap { format, fd, size } => {
+                if KeymapFormat::XkbV1 == format {
+                    state.load_keymap_from_fd(fd, size as usize);
                 }
-                Event::RepeatInfo { rate, delay } => {
-                    state.set_repeat_info(rate as u32, delay as u32);
-                }
-                Event::Modifiers {
-                    mods_depressed,
-                    mods_latched,
-                    mods_locked,
-                    group,
-                    serial,
-                } => {
-                    let modifiers =
-                        state.update_modifiers(mods_depressed, mods_latched, mods_locked, group);
-                    event_queue.queue_event(KeyboardEvent::Modifiers {
-                        modifiers,
-                        serial,
-                    });
-                }
-                Event::Enter {
-                    surface,
-                    serial,
-                    keys,
-                } => {
-                    let rawkeys: Vec<Keycode> = unsafe {
-                        ::std::slice::from_raw_parts(keys.as_ptr() as *const u32, keys.len() / 4)
-                            .to_vec()
-                    };
-                    let keysyms: Vec<Keysym> = rawkeys
-                        .iter()
-                        .map(|rawkey| state.get_sym(*rawkey))
-                        .collect();
+            }
+            Event::RepeatInfo { rate, delay } => {
+                state.set_repeat_info(rate as u32, delay as u32);
+            }
+            Event::Modifiers {
+                mods_depressed,
+                mods_latched,
+                mods_locked,
+                group,
+                serial,
+            } => {
+                let modifiers =
+                    state.update_modifiers(mods_depressed, mods_latched, mods_locked, group);
+                event_queue.queue_event(KeyboardEvent::Modifiers { modifiers, serial });
+            }
+            Event::Enter {
+                surface,
+                serial,
+                keys,
+            } => {
+                let rawkeys: Vec<Keycode> = unsafe {
+                    ::std::slice::from_raw_parts(keys.as_ptr() as *const u32, keys.len() / 4)
+                        .to_vec()
+                };
+                let keysyms: Vec<Keysym> = rawkeys
+                    .iter()
+                    .map(|rawkey| state.get_sym(*rawkey))
+                    .collect();
 
-                    event_queue.enter_surface(&surface);
-                    event_queue.queue_event(KeyboardEvent::Enter {
-                        rawkeys,
-                        keysyms,
-                        serial,
-                    });
-                }
-                Event::Leave {
-                    surface: _,
+                event_queue.enter_surface(&surface);
+                event_queue.queue_event(KeyboardEvent::Enter {
+                    rawkeys,
+                    keysyms,
                     serial,
-                } => {
-                    // TODO abort repeat
-                    event_queue.queue_event(KeyboardEvent::Leave {
-                        serial,
-                    });
-                }
-                Event::Key {
-                    serial,
-                    time,
-                    key: rawkey,
+                });
+            }
+            Event::Leave { surface: _, serial } => {
+                // TODO abort repeat
+                event_queue.queue_event(KeyboardEvent::Leave { serial });
+            }
+            Event::Key {
+                serial,
+                time,
+                key: rawkey,
+                state: keystate,
+            } => {
+                let keysym = state.get_sym(rawkey);
+                let utf8 = match keystate {
+                    KeyState::Pressed => state
+                        .compose(keysym)
+                        .ok()
+                        .unwrap_or_else(|| state.get_utf8(rawkey)),
+                    KeyState::Released => None,
+                };
+                // TODO start repeat thread
+                event_queue.queue_event(KeyboardEvent::Key {
+                    rawkey,
+                    keysym,
                     state: keystate,
-                } => {
-                    let keysym = state.get_sym(rawkey);
-                    let utf8 = match keystate {
-                        KeyState::Pressed => state
-                            .compose(keysym)
-                            .ok()
-                            .unwrap_or_else(|| state.get_utf8(rawkey)),
-                        KeyState::Released => None,
-                    };
-                    // TODO start repeat thread
-                    event_queue.queue_event(KeyboardEvent::Key {
-                        rawkey,
-                        keysym,
-                        state: keystate,
-                        utf8,
-                        time,
-                        serial,
-                    });
-                }
+                    utf8,
+                    time,
+                    serial,
+                });
             }
         },
         (),

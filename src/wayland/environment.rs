@@ -1,7 +1,8 @@
 //! Wayland boilerplate handling
 use crate::wayland::compositor::{initialize_compositor, initialize_subcompositor};
 use crate::wayland::cursor::CursorManager;
-use crate::wayland::data_device::{initialize_data_device_manager, WlDataDeviceManager};
+use crate::wayland::data_device_manager::initialize_data_device_manager;
+use crate::wayland::data_source::DataSourceManager;
 use crate::wayland::event_queue::EventQueue;
 use crate::wayland::output::{OutputManager, OutputManagerEvent};
 use crate::wayland::seat::{SeatManager, SeatManagerEvent};
@@ -27,9 +28,8 @@ pub struct Environment {
     pub cursor_manager: CursorManager,
     /// The SHM global, to create shared memory buffers
     pub shm: Proxy<WlShm>,
-    /// The data device manager, used to handle drag&drop and selection
-    /// copy/paste
-    pub data_device_manager: Proxy<WlDataDeviceManager>,
+    /// The data source manager used to handle drag&drop and selection
+    pub data_source_manager: DataSourceManager,
 }
 
 impl Environment {
@@ -116,6 +116,7 @@ impl Environment {
             compositor.clone(),
             subcompositor.clone(),
         );
+        let data_source_manager = DataSourceManager::new(data_device_manager);
 
         let mut environment = Environment {
             display,
@@ -126,7 +127,7 @@ impl Environment {
             surface_manager,
             cursor_manager,
             shm,
-            data_device_manager,
+            data_source_manager,
         };
 
         environment.output_manager.handle_events();

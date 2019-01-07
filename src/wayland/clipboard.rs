@@ -1,17 +1,15 @@
 //! Wayland clipboard handling
-use crate::wayland::data_offer::ReadPipe;
-use crate::wayland::data_source::{DataSource, DataSourceEvent, WritePipe};
-use crate::wayland::data_device::{get_selection, set_selection, WlDataDeviceManager};
+use crate::wayland::data_source::{DataSourceEvent, DataSourceManager};
 use crate::wayland::event_queue::{EventDrain, EventQueue, EventSource};
+use crate::wayland::pipe::{ReadPipe, WritePipe};
 use crate::wayland::seat::SeatManager;
-use wayland_client::Proxy;
 
 /// Clipboard abstraction
 pub struct Clipboard {
-    data_device_manager: Proxy<WlDataDeviceManager>,
     seat_manager: SeatManager,
+    data_source_manager: DataSourceManager,
     mime_types: Vec<String>,
-    data_source: Option<DataSource>,
+    data_sources: Vec<(u32, EventDrain<DataSourceEvent>)>,
     event_source: EventSource<ClipboardEvent>,
     event_drain: EventDrain<ClipboardEvent>,
 }
@@ -19,18 +17,18 @@ pub struct Clipboard {
 impl Clipboard {
     /// Creates a new `Clipboard`
     pub fn new(
-        data_device_manager: Proxy<WlDataDeviceManager>,
         seat_manager: SeatManager,
+        data_source_manager: DataSourceManager,
         mime_types: Vec<String>,
     ) -> Self {
-        let (source, drain) = EventQueue::new();
+        let (event_source, event_drain) = EventQueue::new();
         Clipboard {
             seat_manager,
-            data_device_manager,
+            data_source_manager,
             mime_types,
-            data_source: None,
-            event_source: source,
-            event_drain: drain,
+            data_sources: Vec::new(),
+            event_source,
+            event_drain,
         }
     }
 
@@ -40,45 +38,13 @@ impl Clipboard {
     /// When a wayland client requests the clipboard contents a
     /// ClipboardEvent::Set will be emitted.
     pub fn set(&mut self, seat_id: u32, serial: u32) {
-        let data_device = self
-            .seat_manager
-            .get_data_device(seat_id)
-            .unwrap();
-        let event_source = self.event_source.clone();
-        self.data_source = Some(DataSource::new(
-            &self.data_device_manager,
-            &self.mime_types[..],
-            move |event| match event {
-                DataSourceEvent::Send { pipe, mime_type } => {
-                    let event = ClipboardEvent::Set {
-                        seat_id,
-                        pipe,
-                        mime_type,
-                    };
-                    event_source.push_event(event);
-                }
-                DataSourceEvent::Cancelled {..} => {
-                    println!("cancelled");
-                }
-                DataSourceEvent::Target {..} => {
-                    println!("target");
-                }
-                DataSourceEvent::Action {..} => {
-                    println!("action");
-                }
-                DataSourceEvent::Dropped => {
-                    println!("dropped");
-                }
-                DataSourceEvent::Finished => {
-                    println!("finished");
-                }
-            }
-        ));
-        set_selection(
-            &data_device,
-            &self.data_source,
-            serial,
-        );
+        let data_device = self.seat_manager.get_data_device(seat_id).unwrap();
+        let (data_source, drain) = self
+            .data_source_manager
+            .create_data_source(&self.mime_types)
+            .split();
+        data_device.set_selection(Some(&data_source), serial);
+        self.data_sources.push((seat_id, drain));
     }
 
     /// Get the clipboard contents
@@ -86,12 +52,20 @@ impl Clipboard {
     /// If the clipboard isn't empty it will emit a ClipboardEvent::Get when
     /// the wayland client setting the clipboard is ready to send the contents.
     pub fn get(&self, seat_id: u32) {
-        let data_device = self
-            .seat_manager
-            .get_data_device(seat_id)
-            .unwrap();
+        if self
+            .data_sources
+            .iter()
+            .find(|(id, _)| *id == seat_id)
+            .is_some()
+        {
+            let mime_type = self.mime_types[0].clone();
+            let event = ClipboardEvent::GetLocal { seat_id, mime_type };
+            self.event_source.push_event(event);
+            return;
+        }
+        let data_device = self.seat_manager.get_data_device(seat_id).unwrap();
         let clipboard_types = &self.mime_types;
-        if let Some(offer) = get_selection(&data_device) {
+        if let Some(offer) = data_device.get_selection() {
             if let Some(mime_type) = offer.with_mime_types(|offer_types| {
                 for clipboard_type in clipboard_types {
                     for offer_type in offer_types {
@@ -116,7 +90,25 @@ impl Clipboard {
     }
 
     /// Polls the clipboard event queue
-    pub fn poll_events<F: FnMut(ClipboardEvent)>(&self, mut cb: F) {
+    pub fn poll_events<F: FnMut(ClipboardEvent)>(&mut self, mut cb: F) {
+        self.data_sources.retain(|(seat_id, drain)| {
+            let mut retain = true;
+            drain.poll_events(|event| match event {
+                DataSourceEvent::Send { pipe, mime_type } => {
+                    let event = ClipboardEvent::Set {
+                        seat_id: *seat_id,
+                        pipe,
+                        mime_type,
+                    };
+                    cb(event);
+                }
+                DataSourceEvent::Cancelled {} => {
+                    retain = false;
+                }
+                _ => {}
+            });
+            retain
+        });
         self.event_drain.poll_events(|event| {
             cb(event);
         });
@@ -140,6 +132,13 @@ pub enum ClipboardEvent {
         seat_id: u32,
         /// The write pipe
         pipe: WritePipe,
+        /// The negotiated mime type
+        mime_type: String,
+    },
+    /// You requested your own clipboard contents
+    GetLocal {
+        /// The seat id of the clipboard
+        seat_id: u32,
         /// The negotiated mime type
         mime_type: String,
     },

@@ -7,15 +7,14 @@ use crate::wayland::surface::{
 };
 use std::sync::Mutex;
 use wayland_client::{GlobalManager, Proxy};
-pub use wayland_protocols::wlr::unstable::layer_shell::v1::client::{
-    zwlr_layer_shell_v1::ZwlrLayerShellV1,
-    zwlr_layer_shell_v1::RequestsTrait as LayerShellRequests,
-    zwlr_layer_shell_v1::Layer,
-    zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
-    zwlr_layer_surface_v1::RequestsTrait as LayerSurfaceRequests,
+use wayland_protocols::wlr::unstable::layer_shell::v1::client::zwlr_layer_surface_v1::{
+    Anchor, Event,
 };
-use wayland_protocols::wlr::unstable::layer_shell::v1::client::{
-    zwlr_layer_surface_v1::{Anchor, Event},
+pub use wayland_protocols::wlr::unstable::layer_shell::v1::client::{
+    zwlr_layer_shell_v1::Layer, zwlr_layer_shell_v1::RequestsTrait as LayerShellRequests,
+    zwlr_layer_shell_v1::ZwlrLayerShellV1,
+    zwlr_layer_surface_v1::RequestsTrait as LayerSurfaceRequests,
+    zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
 };
 
 /// The layer shell
@@ -29,11 +28,7 @@ impl LayerShell {
     pub fn new(globals: &GlobalManager, surface_manager: SurfaceManager) -> Self {
         let layer_shell = globals
             .instantiate_auto(|layer_shell| {
-                layer_shell.implement(
-                    |event, _layer_shell| match event {
-                    },
-                    (),
-                )
+                layer_shell.implement(|event, _layer_shell| match event {}, ())
             })
             .expect("Server didn't advertise `zwlr_layer_shell_v1`");
 
@@ -55,17 +50,17 @@ impl LayerShell {
         let surface = self.surface_manager.create_surface();
         let layer_surface = self
             .layer_shell
-            .get_layer_surface(
-                &surface,
-                Some(&output),
-                layer,
-                app_id,
-                |layer_surface| {
-                    layer_surface.implement(move |event, layer_surface| match event {
+            .get_layer_surface(&surface, Some(&output), layer, app_id, |layer_surface| {
+                layer_surface.implement(
+                    move |event, layer_surface| match event {
                         Event::Closed => {
                             source.push_event(LayerSurfaceEvent::Close);
-                        },
-                        Event::Configure { serial, width, height } => {
+                        }
+                        Event::Configure {
+                            serial,
+                            width,
+                            height,
+                        } => {
                             layer_surface.ack_configure(serial);
                             let width = width as u32;
                             let height = height as u32;
@@ -75,13 +70,12 @@ impl LayerShell {
                             } else {
                                 Some((width, height))
                             };
-                            source.push_event(LayerSurfaceEvent::Configure {
-                                size,
-                            });
-                        },
-                    }, ())
-                },
-            )
+                            source.push_event(LayerSurfaceEvent::Configure { size });
+                        }
+                    },
+                    (),
+                )
+            })
             .unwrap();
         layer_surface.set_anchor(layout.anchor());
         layer_surface.set_exclusive_zone(layout.exclusive());
@@ -193,18 +187,14 @@ pub enum Layout {
     /// The surface will be anchored to the bottom of the screen
     BarBottom {
         /// The height of the bar
-        height: u32
+        height: u32,
     },
 }
 
 impl Layout {
     fn anchor(&self) -> Anchor {
         match *self {
-            Layout::BarBottom { .. } => {
-                Anchor::Bottom |
-                Anchor::Left |
-                Anchor::Right
-            }
+            Layout::BarBottom { .. } => Anchor::Bottom | Anchor::Left | Anchor::Right,
         }
     }
 
@@ -214,23 +204,20 @@ impl Layout {
         }
     }
 
-    fn size(
-        &self,
-        output: &Proxy<WlOutput>,
-    ) -> (u32, u32) {
+    fn size(&self, output: &Proxy<WlOutput>) -> (u32, u32) {
         let output_user_data = output
             .user_data::<Mutex<OutputUserData>>()
             .unwrap()
             .lock()
             .unwrap();
-        let dimensions = output_user_data.modes.iter()
+        let dimensions = output_user_data
+            .modes
+            .iter()
             .find(|mode| mode.is_current)
             .unwrap()
             .dimensions;
         match *self {
-            Layout::BarBottom { height } => {
-                (dimensions.0 as _, height)
-            }
+            Layout::BarBottom { height } => (dimensions.0 as _, height),
         }
     }
 }
