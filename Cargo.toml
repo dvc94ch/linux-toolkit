@@ -12,12 +12,10 @@ rand = "*"
 
 [dependencies.wayland-client]
 version = "*"
-path = "../wayland-rs/wayland-client"
 features = ["cursor", "dlopen", "native_lib"]
 
 [dependencies.wayland-protocols]
 version = "*"
-path = "../wayland-rs/wayland-protocols"
 features = ["native_client", "unstable_protocols"]
 
 [dependencies.xkbcommon]
