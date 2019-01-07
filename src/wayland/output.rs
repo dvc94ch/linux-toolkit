@@ -35,7 +35,12 @@ impl OutputManager {
         }
     }
 
-    fn new_output(&self, output_id: u32, version: u32, registry: &Proxy<WlRegistry>) {
+    fn new_output(
+        &self,
+        output_id: u32,
+        version: u32,
+        registry: &Proxy<WlRegistry>,
+    ) {
         let surface_manager_source = self.surface_manager_source.clone();
         let cursor_manager_source = self.cursor_manager_source.clone();
         let output = registry
@@ -60,7 +65,8 @@ impl OutputManager {
                                 transform,
                             } => {
                                 user_data.location = (x, y);
-                                user_data.physical_size = (physical_width, physical_height);
+                                user_data.physical_size =
+                                    (physical_width, physical_height);
                                 user_data.subpixel = subpixel;
                                 user_data.transform = transform;
                                 user_data.model = model;
@@ -74,13 +80,16 @@ impl OutputManager {
                             } => {
                                 let dimensions = (width as u32, height as u32);
                                 let refresh_rate = refresh as u32;
-                                let is_preferred = flags.contains(WlMode::Preferred);
-                                let is_current = flags.contains(WlMode::Current);
+                                let is_preferred =
+                                    flags.contains(WlMode::Preferred);
+                                let is_current =
+                                    flags.contains(WlMode::Current);
 
-                                let existing_mode = user_data.modes.iter_mut().find(|mode| {
-                                    mode.dimensions == dimensions
-                                        && mode.refresh_rate == refresh_rate
-                                });
+                                let existing_mode =
+                                    user_data.modes.iter_mut().find(|mode| {
+                                        mode.dimensions == dimensions
+                                            && mode.refresh_rate == refresh_rate
+                                    });
                                 match existing_mode {
                                     Some(mode) => {
                                         mode.is_preferred = is_preferred;

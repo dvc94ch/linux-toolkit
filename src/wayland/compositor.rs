@@ -19,7 +19,9 @@ pub fn initialize_compositor(globals: &GlobalManager) -> Proxy<WlCompositor> {
 /// Initializes the `wl_subcompositor`
 ///
 /// Fails if the compositor did not advertise `wl_subcompositor`.
-pub fn initialize_subcompositor(globals: &GlobalManager) -> Proxy<WlSubcompositor> {
+pub fn initialize_subcompositor(
+    globals: &GlobalManager,
+) -> Proxy<WlSubcompositor> {
     globals
         .instantiate_auto(|subcompositor| {
             subcompositor.implement(|event, _subcompositor| match event {}, ())

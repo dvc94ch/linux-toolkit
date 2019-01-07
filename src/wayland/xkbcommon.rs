@@ -9,7 +9,8 @@ use xkbcommon::xkb::{Context, Keymap, State};
 use xkbcommon::xkb::{CONTEXT_NO_FLAGS, KEYMAP_COMPILE_NO_FLAGS};
 use xkbcommon::xkb::{KEYMAP_FORMAT_TEXT_V1, STATE_MODS_EFFECTIVE};
 use xkbcommon::xkb::{
-    MOD_NAME_ALT, MOD_NAME_CAPS, MOD_NAME_CTRL, MOD_NAME_LOGO, MOD_NAME_NUM, MOD_NAME_SHIFT,
+    MOD_NAME_ALT, MOD_NAME_CAPS, MOD_NAME_CTRL, MOD_NAME_LOGO, MOD_NAME_NUM,
+    MOD_NAME_SHIFT,
 };
 
 /// The state of a keyboard
@@ -27,8 +28,12 @@ impl KeyboardState {
     pub fn new() -> Self {
         let locale = get_locale_ctype();
         let context = Context::new(CONTEXT_NO_FLAGS);
-        let compose_table =
-            ComposeTable::new_from_locale(&context, locale.as_str(), COMPILE_NO_FLAGS).unwrap();
+        let compose_table = ComposeTable::new_from_locale(
+            &context,
+            locale.as_str(),
+            COMPILE_NO_FLAGS,
+        )
+        .unwrap();
         let compose_state = ComposeState::new(&compose_table, STATE_NO_FLAGS);
         KeyboardState {
             context,
@@ -136,12 +141,17 @@ pub struct ModifiersState {
 impl ModifiersState {
     fn from_xkb_state(state: &State) -> ModifiersState {
         ModifiersState {
-            ctrl: state.mod_name_is_active(&MOD_NAME_CTRL, STATE_MODS_EFFECTIVE),
+            ctrl: state
+                .mod_name_is_active(&MOD_NAME_CTRL, STATE_MODS_EFFECTIVE),
             alt: state.mod_name_is_active(&MOD_NAME_ALT, STATE_MODS_EFFECTIVE),
-            shift: state.mod_name_is_active(&MOD_NAME_SHIFT, STATE_MODS_EFFECTIVE),
-            caps_lock: state.mod_name_is_active(&MOD_NAME_CAPS, STATE_MODS_EFFECTIVE),
-            logo: state.mod_name_is_active(&MOD_NAME_LOGO, STATE_MODS_EFFECTIVE),
-            num_lock: state.mod_name_is_active(&MOD_NAME_NUM, STATE_MODS_EFFECTIVE),
+            shift: state
+                .mod_name_is_active(&MOD_NAME_SHIFT, STATE_MODS_EFFECTIVE),
+            caps_lock: state
+                .mod_name_is_active(&MOD_NAME_CAPS, STATE_MODS_EFFECTIVE),
+            logo: state
+                .mod_name_is_active(&MOD_NAME_LOGO, STATE_MODS_EFFECTIVE),
+            num_lock: state
+                .mod_name_is_active(&MOD_NAME_NUM, STATE_MODS_EFFECTIVE),
         }
     }
 }

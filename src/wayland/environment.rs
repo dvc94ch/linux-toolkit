@@ -1,5 +1,7 @@
 //! Wayland boilerplate handling
-use crate::wayland::compositor::{initialize_compositor, initialize_subcompositor};
+use crate::wayland::compositor::{
+    initialize_compositor, initialize_subcompositor,
+};
 use crate::wayland::cursor::CursorManager;
 use crate::wayland::data_device_manager::initialize_data_device_manager;
 use crate::wayland::data_source::DataSourceManager;
@@ -8,7 +10,9 @@ use crate::wayland::output::{OutputManager, OutputManagerEvent};
 use crate::wayland::seat::{SeatManager, SeatManagerEvent};
 use crate::wayland::shm::{initialize_shm, WlShm};
 use crate::wayland::surface::SurfaceManager;
-use wayland_client::{Display, EventQueue as WlEventQueue, GlobalEvent, GlobalManager, Proxy};
+use wayland_client::{
+    Display, EventQueue as WlEventQueue, GlobalEvent, GlobalManager, Proxy,
+};
 
 /// The `Environment` ties together all the wayland boilerplate
 pub struct Environment {
@@ -46,41 +50,46 @@ impl Environment {
         let (cursor_manager_source, cursor_manager_drain) = EventQueue::new();
 
         let globals = {
-            GlobalManager::new_with_cb(&display, move |event, registry| match event {
-                GlobalEvent::New {
-                    id,
-                    ref interface,
-                    version,
-                } => match &interface[..] {
-                    "wl_output" => {
-                        let event = OutputManagerEvent::NewOutput {
-                            id,
-                            version,
-                            registry,
-                        };
-                        output_manager_source.push_event(event);
+            GlobalManager::new_with_cb(&display, move |event, registry| {
+                match event {
+                    GlobalEvent::New {
+                        id,
+                        ref interface,
+                        version,
+                    } => match &interface[..] {
+                        "wl_output" => {
+                            let event = OutputManagerEvent::NewOutput {
+                                id,
+                                version,
+                                registry,
+                            };
+                            output_manager_source.push_event(event);
+                        }
+                        "wl_seat" => {
+                            let event = SeatManagerEvent::NewSeat {
+                                id,
+                                version,
+                                registry,
+                            };
+                            seat_manager_source.push_event(event);
+                        }
+                        _ => {}
+                    },
+                    GlobalEvent::Removed { id, ref interface } => {
+                        match &interface[..] {
+                            "wl_output" => {
+                                let event =
+                                    OutputManagerEvent::RemoveOutput { id };
+                                output_manager_source.push_event(event);
+                            }
+                            "wl_seat" => {
+                                let event = SeatManagerEvent::RemoveSeat { id };
+                                seat_manager_source.push_event(event);
+                            }
+                            _ => {}
+                        }
                     }
-                    "wl_seat" => {
-                        let event = SeatManagerEvent::NewSeat {
-                            id,
-                            version,
-                            registry,
-                        };
-                        seat_manager_source.push_event(event);
-                    }
-                    _ => {}
-                },
-                GlobalEvent::Removed { id, ref interface } => match &interface[..] {
-                    "wl_output" => {
-                        let event = OutputManagerEvent::RemoveOutput { id };
-                        output_manager_source.push_event(event);
-                    }
-                    "wl_seat" => {
-                        let event = SeatManagerEvent::RemoveSeat { id };
-                        seat_manager_source.push_event(event);
-                    }
-                    _ => {}
-                },
+                }
             })
         };
 

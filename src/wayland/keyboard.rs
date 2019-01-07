@@ -34,9 +34,16 @@ pub fn implement_keyboard(
                 group,
                 serial,
             } => {
-                let modifiers =
-                    state.update_modifiers(mods_depressed, mods_latched, mods_locked, group);
-                event_queue.queue_event(KeyboardEvent::Modifiers { modifiers, serial });
+                let modifiers = state.update_modifiers(
+                    mods_depressed,
+                    mods_latched,
+                    mods_locked,
+                    group,
+                );
+                event_queue.queue_event(KeyboardEvent::Modifiers {
+                    modifiers,
+                    serial,
+                });
             }
             Event::Enter {
                 surface,
@@ -44,8 +51,11 @@ pub fn implement_keyboard(
                 keys,
             } => {
                 let rawkeys: Vec<Keycode> = unsafe {
-                    ::std::slice::from_raw_parts(keys.as_ptr() as *const u32, keys.len() / 4)
-                        .to_vec()
+                    ::std::slice::from_raw_parts(
+                        keys.as_ptr() as *const u32,
+                        keys.len() / 4,
+                    )
+                    .to_vec()
                 };
                 let keysyms: Vec<Keysym> = rawkeys
                     .iter()

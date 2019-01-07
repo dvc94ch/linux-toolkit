@@ -18,7 +18,10 @@ use std::sync::Mutex;
 fn main() {
     let mut environment = Environment::initialize(None).unwrap();
     let mut pools = DoubleMemPool::new(&environment.shm, || {}).unwrap();
-    let xdg_shell = XdgShell::new(&environment.globals, environment.surface_manager.clone());
+    let xdg_shell = XdgShell::new(
+        &environment.globals,
+        environment.surface_manager.clone(),
+    );
     let xdg_surface = xdg_shell.create_shell_surface();
     let mut clipboard = Clipboard::new(
         environment.seat_manager.clone(),
@@ -57,7 +60,9 @@ fn main() {
                 match &event {
                     SeatEvent::Pointer { event } => match event {
                         PointerEvent::Enter { ref cursor, .. } => {
-                            cursor.change_cursor(Some("grabbing".into())).unwrap();
+                            cursor
+                                .change_cursor(Some("grabbing".into()))
+                                .unwrap();
                         }
                         _ => {}
                     },

@@ -41,7 +41,10 @@ pub struct DoubleMemPool {
 
 impl DoubleMemPool {
     /// Create a double memory pool
-    pub fn new<Impl>(shm: &Proxy<wl_shm::WlShm>, implementation: Impl) -> io::Result<DoubleMemPool>
+    pub fn new<Impl>(
+        shm: &Proxy<wl_shm::WlShm>,
+        implementation: Impl,
+    ) -> io::Result<DoubleMemPool>
     where
         Impl: FnMut() + Send + 'static,
     {
@@ -112,7 +115,10 @@ pub struct MemPool {
 
 impl MemPool {
     /// Create a new memory pool associated with given shm
-    pub fn new<Impl>(shm: &Proxy<wl_shm::WlShm>, implementation: Impl) -> io::Result<MemPool>
+    pub fn new<Impl>(
+        shm: &Proxy<wl_shm::WlShm>,
+        implementation: Impl,
+    ) -> io::Result<MemPool>
     where
         Impl: FnMut() + Send + 'static,
     {
@@ -121,7 +127,9 @@ impl MemPool {
         mem_file.set_len(128)?;
 
         let pool = shm
-            .create_pool(mem_fd, 128, |pool| pool.implement(|e, _| match e {}, ()))
+            .create_pool(mem_fd, 128, |pool| {
+                pool.implement(|e, _| match e {}, ())
+            })
             .unwrap();
 
         let mmap = unsafe { MmapMut::map_mut(&mem_file).unwrap() };
@@ -183,10 +191,12 @@ impl MemPool {
         self.pool
             .create_buffer(offset, width, height, stride, format, |buffer| {
                 buffer.implement(
-                    move |event, buffer: Proxy<wl_buffer::WlBuffer>| match event {
+                    move |event, buffer: Proxy<wl_buffer::WlBuffer>| match event
+                    {
                         wl_buffer::Event::Release => {
                             buffer.destroy();
-                            let mut my_buffer_count = my_buffer_count.lock().unwrap();
+                            let mut my_buffer_count =
+                                my_buffer_count.lock().unwrap();
                             *my_buffer_count -= 1;
                             if *my_buffer_count == 0 {
                                 (&mut *my_implementation.lock().unwrap())();
@@ -267,7 +277,9 @@ fn create_shm_fd() -> io::Result<RawFd> {
                 Ok(_) => return Ok(fd),
                 Err(nix::Error::Sys(errno)) => match unistd::close(fd) {
                     Ok(_) => return Err(io::Error::from(errno)),
-                    Err(nix::Error::Sys(errno)) => return Err(io::Error::from(errno)),
+                    Err(nix::Error::Sys(errno)) => {
+                        return Err(io::Error::from(errno))
+                    }
                     Err(err) => panic!(err),
                 },
                 Err(err) => panic!(err),

@@ -4,7 +4,8 @@ use crate::wayland::event_queue::{EventDrain, EventQueue};
 use std::sync::{Arc, Mutex};
 use wayland_client::{GlobalManager, Proxy};
 use wayland_protocols::wlr::unstable::foreign_toplevel::v1::client::{
-    zwlr_foreign_toplevel_handle_v1::Event, zwlr_foreign_toplevel_manager_v1::Event as ManagerEvent,
+    zwlr_foreign_toplevel_handle_v1::Event,
+    zwlr_foreign_toplevel_manager_v1::Event as ManagerEvent,
 };
 pub use wayland_protocols::wlr::unstable::foreign_toplevel::v1::client::{
     zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1,

@@ -40,10 +40,12 @@ impl DataOffer {
                         inner.mime_types.push(mime_type);
                     }
                     Event::SourceActions { source_actions } => {
-                        inner.actions = DndAction::from_bits_truncate(source_actions);
+                        inner.actions =
+                            DndAction::from_bits_truncate(source_actions);
                     }
                     Event::Action { dnd_action } => {
-                        inner.current_action = DndAction::from_bits_truncate(dnd_action);
+                        inner.current_action =
+                            DndAction::from_bits_truncate(dnd_action);
                     }
                 }
             },
@@ -127,7 +129,10 @@ impl DataOffer {
 }
 
 impl std::fmt::Debug for DataOffer {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+    fn fmt(
+        &self,
+        fmt: &mut std::fmt::Formatter,
+    ) -> Result<(), std::fmt::Error> {
         write!(fmt, "DataOffer")
     }
 }

@@ -23,7 +23,11 @@ impl CursorTheme {
     /// Will use the default theme of the system if theme_name is `None`.
     ///
     /// Returns `Err(())` if `libwayland-cursor` is not available.
-    pub fn new(shm: &Proxy<WlShm>, name: Option<&String>, scale_factor: u32) -> Result<Self, ()> {
+    pub fn new(
+        shm: &Proxy<WlShm>,
+        name: Option<&String>,
+        scale_factor: u32,
+    ) -> Result<Self, ()> {
         if !cursor::is_available() {
             return Err(());
         }
@@ -195,7 +199,10 @@ impl PartialEq for Cursor {
 }
 
 impl std::fmt::Debug for Cursor {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+    fn fmt(
+        &self,
+        fmt: &mut std::fmt::Formatter,
+    ) -> Result<(), std::fmt::Error> {
         write!(fmt, "Cursor")
     }
 }
@@ -237,7 +244,9 @@ impl CursorManager {
 
     /// Creates a new `Cursor`
     pub fn new_cursor(&self, cursor_name: Option<String>) -> Cursor {
-        let cursor = Cursor::new(&self.compositor, self.theme.clone(), cursor_name).unwrap();
+        let cursor =
+            Cursor::new(&self.compositor, self.theme.clone(), cursor_name)
+                .unwrap();
         let mut cursors = self.cursors.lock().unwrap();
         cursors.push(cursor.clone());
         cursor
@@ -286,7 +295,12 @@ impl CursorManager {
         if new_scale_factor != self.scale_factor {
             self.scale_factor = new_scale_factor;
             let mut theme = self.theme.lock().unwrap();
-            *theme = CursorTheme::new(&self.shm, self.theme_name.as_ref(), self.scale_factor).ok();
+            *theme = CursorTheme::new(
+                &self.shm,
+                self.theme_name.as_ref(),
+                self.scale_factor,
+            )
+            .ok();
             let mut cursors = self.cursors.lock().unwrap();
             for cursor in cursors.iter_mut() {
                 cursor.load_cursor().unwrap();

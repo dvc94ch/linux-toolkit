@@ -144,7 +144,8 @@ impl SurfaceUserData {
                 .unwrap()
                 .lock()
                 .unwrap();
-            scale_factor = ::std::cmp::max(scale_factor, user_data.scale_factor);
+            scale_factor =
+                ::std::cmp::max(scale_factor, user_data.scale_factor);
         }
         if self.scale_factor != scale_factor {
             self.scale_factor = scale_factor;
@@ -154,7 +155,10 @@ impl SurfaceUserData {
     }
 
     /// Process it's event queue
-    pub fn poll_events<F: FnMut(SurfaceEvent, &SurfaceUserData)>(&self, mut cb: F) {
+    pub fn poll_events<F: FnMut(SurfaceEvent, &SurfaceUserData)>(
+        &self,
+        mut cb: F,
+    ) {
         self.event_drain.poll_events(|event| {
             cb(event, self);
         });

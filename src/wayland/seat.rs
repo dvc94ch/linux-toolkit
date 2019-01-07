@@ -1,6 +1,8 @@
 //! Seat handling
 use crate::wayland::cursor::CursorManager;
-use crate::wayland::data_device_manager::{DataDeviceManagerRequests, WlDataDeviceManager};
+use crate::wayland::data_device_manager::{
+    DataDeviceManagerRequests, WlDataDeviceManager,
+};
 use crate::wayland::event_queue::{EventDrain, EventSource};
 use crate::wayland::surface::{SurfaceEvent, SurfaceUserData, WlSurface};
 use std::marker::PhantomData;
@@ -13,11 +15,18 @@ use wayland_client::protocol::wl_seat::{Capability, Event};
 use wayland_client::Proxy;
 
 use crate::wayland::data_device::{
-    implement_data_device, DataDevice, DataDeviceEvent, DataDeviceRequests, WlDataDevice,
+    implement_data_device, DataDevice, DataDeviceEvent, DataDeviceRequests,
+    WlDataDevice,
 };
-use crate::wayland::keyboard::{implement_keyboard, KeyboardEvent, KeyboardRequests, WlKeyboard};
-use crate::wayland::pointer::{implement_pointer, PointerEvent, PointerRequests, WlPointer};
-use crate::wayland::touch::{implement_touch, TouchEvent, TouchRequests, WlTouch};
+use crate::wayland::keyboard::{
+    implement_keyboard, KeyboardEvent, KeyboardRequests, WlKeyboard,
+};
+use crate::wayland::pointer::{
+    implement_pointer, PointerEvent, PointerRequests, WlPointer,
+};
+use crate::wayland::touch::{
+    implement_touch, TouchEvent, TouchRequests, WlTouch,
+};
 
 /// Handles `wl_seat`s
 #[derive(Clone)]
@@ -43,7 +52,12 @@ impl SeatManager {
         }
     }
 
-    fn new_seat(&self, seat_id: u32, version: u32, registry: &Proxy<WlRegistry>) {
+    fn new_seat(
+        &self,
+        seat_id: u32,
+        version: u32,
+        registry: &Proxy<WlRegistry>,
+    ) {
         let cursor_manager = self.cursor_manager.clone();
         let data_device_manager = self.data_device_manager.clone();
         let seat = registry
@@ -64,7 +78,8 @@ impl SeatManager {
                             }
                             Event::Capabilities { capabilities } => {
                                 if capabilities.contains(Capability::Pointer) {
-                                    user_data.impl_pointer(&seat, &cursor_manager);
+                                    user_data
+                                        .impl_pointer(&seat, &cursor_manager);
                                 } else {
                                     user_data.drop_pointer();
                                 }
@@ -171,12 +186,20 @@ impl SeatUserData {
         &self.name[..]
     }
 
-    fn impl_pointer(&mut self, seat: &Proxy<WlSeat>, cursor_manager: &CursorManager) {
+    fn impl_pointer(
+        &mut self,
+        seat: &Proxy<WlSeat>,
+        cursor_manager: &CursorManager,
+    ) {
         if self.pointer.is_none() {
             self.pointer = seat
                 .get_pointer(|pointer| {
                     let event_queue = SeatEventSource::new(seat.id());
-                    implement_pointer(pointer, event_queue, cursor_manager.clone())
+                    implement_pointer(
+                        pointer,
+                        event_queue,
+                        cursor_manager.clone(),
+                    )
                 })
                 .ok();
         }

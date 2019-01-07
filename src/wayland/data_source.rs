@@ -31,7 +31,9 @@ impl DataSourceManager {
         let (source, drain) = EventQueue::new();
         let data_source = self
             .data_device_manager
-            .create_data_source(|data_source| implement_data_source(data_source, source))
+            .create_data_source(|data_source| {
+                implement_data_source(data_source, source)
+            })
             .unwrap();
         for mime in mime_types {
             data_source.offer(mime.to_owned());
@@ -49,7 +51,9 @@ pub fn implement_data_source(
     data_source.implement(
         move |event, data_source| {
             let event = match event {
-                Event::Target { mime_type } => DataSourceEvent::Target { mime_type },
+                Event::Target { mime_type } => {
+                    DataSourceEvent::Target { mime_type }
+                }
                 Event::Send { mime_type, fd } => DataSourceEvent::Send {
                     mime_type,
                     pipe: unsafe { FromRawFd::from_raw_fd(fd) },
@@ -146,7 +150,10 @@ pub struct DataSource {
 
 impl DataSource {
     /// Creates a new `DataSource`
-    pub fn new(data_source: Proxy<WlDataSource>, event_drain: EventDrain<DataSourceEvent>) -> Self {
+    pub fn new(
+        data_source: Proxy<WlDataSource>,
+        event_drain: EventDrain<DataSourceEvent>,
+    ) -> Self {
         DataSource {
             data_source,
             event_drain,

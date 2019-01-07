@@ -92,7 +92,9 @@ impl DataDeviceUserData {
 
     fn set_selection(&mut self, offer: Option<Proxy<WlDataOffer>>) {
         if let Some(offer) = offer {
-            if let Some(id) = self.offers.iter().position(|o| o.offer.equals(&offer)) {
+            if let Some(id) =
+                self.offers.iter().position(|o| o.offer.equals(&offer))
+            {
                 self.selection = Some(self.offers.swap_remove(id));
             } else {
                 panic!("Compositor set an unknown data_offer for selection.");
@@ -105,7 +107,9 @@ impl DataDeviceUserData {
 
     fn set_dnd(&mut self, offer: Option<Proxy<WlDataOffer>>) {
         if let Some(offer) = offer {
-            if let Some(id) = self.offers.iter().position(|o| o.offer.equals(&offer)) {
+            if let Some(id) =
+                self.offers.iter().position(|o| o.offer.equals(&offer))
+            {
                 self.current_dnd = Some(self.offers.swap_remove(id));
             } else {
                 panic!("Compositor set an unknown data_offer for selection.");
@@ -165,7 +169,11 @@ impl DataDevice {
     ///
     /// Correspond to traditional copy/paste behavior. Setting the
     /// source to `None` will clear the selection.
-    pub fn set_selection(&self, source: Option<&Proxy<WlDataSource>>, serial: u32) {
+    pub fn set_selection(
+        &self,
+        source: Option<&Proxy<WlDataSource>>,
+        serial: u32,
+    ) {
         self.data_device.set_selection(source, serial);
     }
 

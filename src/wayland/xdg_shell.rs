@@ -7,8 +7,9 @@ use crate::wayland::surface::{
 use std::sync::Mutex;
 use wayland_client::{GlobalManager, Proxy};
 use wayland_protocols::xdg_shell::client::{
-    xdg_surface::Event as XdgSurfaceEvent_, xdg_surface::RequestsTrait as XdgSurfaceRequests,
-    xdg_surface::XdgSurface, xdg_toplevel::Event as XdgToplevelEvent,
+    xdg_surface::Event as XdgSurfaceEvent_,
+    xdg_surface::RequestsTrait as XdgSurfaceRequests, xdg_surface::XdgSurface,
+    xdg_toplevel::Event as XdgToplevelEvent,
     xdg_toplevel::RequestsTrait as XdgToplevelRequests, xdg_toplevel::State,
     xdg_toplevel::XdgToplevel, xdg_wm_base::Event as XdgShellEvent,
     xdg_wm_base::RequestsTrait as XdgShellRequests, xdg_wm_base::XdgWmBase,
@@ -22,7 +23,10 @@ pub struct XdgShell {
 
 impl XdgShell {
     /// Creates a `XdgShell`
-    pub fn new(globals: &GlobalManager, surface_manager: SurfaceManager) -> Self {
+    pub fn new(
+        globals: &GlobalManager,
+        surface_manager: SurfaceManager,
+    ) -> Self {
         let xdg_shell = globals
             .instantiate_auto(|wm_base| {
                 wm_base.implement(
@@ -88,7 +92,10 @@ impl XdgShell {
                                 .cloned()
                                 .flat_map(State::from_raw)
                                 .collect::<Vec<_>>();
-                            source.push_event(XdgSurfaceEvent::Configure { size, states });
+                            source.push_event(XdgSurfaceEvent::Configure {
+                                size,
+                                states,
+                            });
                         }
                     },
                     (),
@@ -130,7 +137,10 @@ impl XdgShellSurface {
     }
 
     /// Polls the events from the event queue
-    pub fn poll_events<F: FnMut(XdgSurfaceEvent, &XdgShellSurface)>(&self, mut cb: F) {
+    pub fn poll_events<F: FnMut(XdgSurfaceEvent, &XdgShellSurface)>(
+        &self,
+        mut cb: F,
+    ) {
         {
             let surface_user_data = self
                 .surface

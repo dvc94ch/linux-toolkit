@@ -63,16 +63,22 @@ pub fn implement_pointer(
                 event_queue.queue_event(PointerEvent::Motion { x, y, time });
             }
             Event::Axis { axis, value, time } => {
-                event_queue.queue_event(PointerEvent::Axis { axis, value, time });
+                event_queue.queue_event(PointerEvent::Axis {
+                    axis,
+                    value,
+                    time,
+                });
             }
             Event::AxisSource { axis_source } => {
-                event_queue.queue_event(PointerEvent::AxisSource { axis_source });
+                event_queue
+                    .queue_event(PointerEvent::AxisSource { axis_source });
             }
             Event::AxisStop { axis, time } => {
                 event_queue.queue_event(PointerEvent::AxisStop { axis, time });
             }
             Event::AxisDiscrete { axis, discrete } => {
-                event_queue.queue_event(PointerEvent::AxisDiscrete { axis, discrete });
+                event_queue
+                    .queue_event(PointerEvent::AxisDiscrete { axis, discrete });
             }
             Event::Frame => {
                 event_queue.queue_event(PointerEvent::Frame);

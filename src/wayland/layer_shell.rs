@@ -25,7 +25,10 @@ pub struct LayerShell {
 
 impl LayerShell {
     /// Creates a `LayerShell`
-    pub fn new(globals: &GlobalManager, surface_manager: SurfaceManager) -> Self {
+    pub fn new(
+        globals: &GlobalManager,
+        surface_manager: SurfaceManager,
+    ) -> Self {
         let layer_shell = globals
             .instantiate_auto(|layer_shell| {
                 layer_shell.implement(|event, _layer_shell| match event {}, ())
@@ -50,32 +53,40 @@ impl LayerShell {
         let surface = self.surface_manager.create_surface();
         let layer_surface = self
             .layer_shell
-            .get_layer_surface(&surface, Some(&output), layer, app_id, |layer_surface| {
-                layer_surface.implement(
-                    move |event, layer_surface| match event {
-                        Event::Closed => {
-                            source.push_event(LayerSurfaceEvent::Close);
-                        }
-                        Event::Configure {
-                            serial,
-                            width,
-                            height,
-                        } => {
-                            layer_surface.ack_configure(serial);
-                            let width = width as u32;
-                            let height = height as u32;
-                            let size = if width == 0 || height == 0 {
-                                // if either w or h is zero, then we get to choose our size
-                                None
-                            } else {
-                                Some((width, height))
-                            };
-                            source.push_event(LayerSurfaceEvent::Configure { size });
-                        }
-                    },
-                    (),
-                )
-            })
+            .get_layer_surface(
+                &surface,
+                Some(&output),
+                layer,
+                app_id,
+                |layer_surface| {
+                    layer_surface.implement(
+                        move |event, layer_surface| match event {
+                            Event::Closed => {
+                                source.push_event(LayerSurfaceEvent::Close);
+                            }
+                            Event::Configure {
+                                serial,
+                                width,
+                                height,
+                            } => {
+                                layer_surface.ack_configure(serial);
+                                let width = width as u32;
+                                let height = height as u32;
+                                let size = if width == 0 || height == 0 {
+                                    // if either w or h is zero, then we get to choose our size
+                                    None
+                                } else {
+                                    Some((width, height))
+                                };
+                                source.push_event(
+                                    LayerSurfaceEvent::Configure { size },
+                                );
+                            }
+                        },
+                        (),
+                    )
+                },
+            )
             .unwrap();
         layer_surface.set_anchor(layout.anchor());
         layer_surface.set_exclusive_zone(layout.exclusive());
@@ -123,7 +134,10 @@ impl LayerShellSurface {
     }
 
     /// Polls the events from the event queue
-    pub fn poll_events<F: FnMut(LayerSurfaceEvent, &LayerShellSurface)>(&self, mut cb: F) {
+    pub fn poll_events<F: FnMut(LayerSurfaceEvent, &LayerShellSurface)>(
+        &self,
+        mut cb: F,
+    ) {
         {
             let surface_user_data = self
                 .surface
@@ -194,7 +208,9 @@ pub enum Layout {
 impl Layout {
     fn anchor(&self) -> Anchor {
         match *self {
-            Layout::BarBottom { .. } => Anchor::Bottom | Anchor::Left | Anchor::Right,
+            Layout::BarBottom { .. } => {
+                Anchor::Bottom | Anchor::Left | Anchor::Right
+            }
         }
     }
 

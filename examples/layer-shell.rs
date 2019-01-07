@@ -1,20 +1,27 @@
 use byteorder::{NativeEndian, WriteBytesExt};
 use linux_toolkit::wayland::data_device::DataDeviceEvent;
 use linux_toolkit::wayland::environment::Environment;
-use linux_toolkit::wayland::layer_shell::{Layer, LayerShell, LayerSurfaceEvent, Layout};
+use linux_toolkit::wayland::layer_shell::{
+    Layer, LayerShell, LayerSurfaceEvent, Layout,
+};
 use linux_toolkit::wayland::mem_pool::{DoubleMemPool, MemPool};
 use linux_toolkit::wayland::pointer::PointerEvent;
 use linux_toolkit::wayland::seat::SeatEvent;
 use linux_toolkit::wayland::shm::Format;
 use linux_toolkit::wayland::surface::{SurfaceRequests, WlSurface};
-use linux_toolkit::wayland::toplevel_manager::{ToplevelEvent, ToplevelManager};
+use linux_toolkit::wayland::toplevel_manager::{
+    ToplevelEvent, ToplevelManager,
+};
 use linux_toolkit::wayland::Proxy;
 use std::io::{BufWriter, Error, Seek, SeekFrom, Write};
 
 fn main() {
     let mut environment = Environment::initialize(None).unwrap();
     let mut pools = DoubleMemPool::new(&environment.shm, || {}).unwrap();
-    let layer_shell = LayerShell::new(&environment.globals, environment.surface_manager.clone());
+    let layer_shell = LayerShell::new(
+        &environment.globals,
+        environment.surface_manager.clone(),
+    );
     let output = environment
         .output_manager
         .outputs()
