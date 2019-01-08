@@ -140,12 +140,17 @@ impl Environment {
         };
 
         environment.output_manager.handle_events();
-        environment.flush();
-        environment.handle_events();
-        environment.flush();
-        environment.handle_events();
+        environment.handle_events_sync();
+        environment.handle_events_sync();
 
         Ok(environment)
+    }
+
+    /// Synchronous handle_events
+    pub fn handle_events_sync(&mut self) {
+        self.flush();
+        //self.event_queue.dispatch().unwrap();
+        self.handle_events();
     }
 
     /// Flush queued messages

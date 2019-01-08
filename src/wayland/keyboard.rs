@@ -1,6 +1,10 @@
 //! Keyboard handling
 use crate::wayland::seat::SeatEventSource;
 use crate::wayland::xkbcommon::KeyboardState;
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
+use std::thread;
+use std::time::{Duration, Instant};
 pub use crate::wayland::xkbcommon::{Keycode, Keysym, ModifiersState};
 use wayland_client::protocol::wl_keyboard::Event;
 pub use wayland_client::protocol::wl_keyboard::KeyState;
@@ -16,6 +20,7 @@ pub fn implement_keyboard(
     mut event_queue: SeatEventSource<KeyboardEvent>,
 ) -> Proxy<WlKeyboard> {
     let mut state = KeyboardState::new();
+    let mut repeat = Repeat::new(event_queue.clone());
 
     keyboard.implement(
         move |event, _keyboard| match event {
@@ -25,7 +30,7 @@ pub fn implement_keyboard(
                 }
             }
             Event::RepeatInfo { rate, delay } => {
-                state.set_repeat_info(rate as u32, delay as u32);
+                repeat.set_info(rate as u32, delay as u32);
             }
             Event::Modifiers {
                 mods_depressed,
@@ -70,7 +75,7 @@ pub fn implement_keyboard(
                 });
             }
             Event::Leave { surface: _, serial } => {
-                // TODO abort repeat
+                repeat.abort();
                 event_queue.queue_event(KeyboardEvent::Leave { serial });
             }
             Event::Key {
@@ -87,7 +92,23 @@ pub fn implement_keyboard(
                         .unwrap_or_else(|| state.get_utf8(rawkey)),
                     KeyState::Released => None,
                 };
-                // TODO start repeat thread
+                match keystate {
+                    KeyState::Pressed => {
+                        if state.key_repeats(rawkey) {
+                            repeat.start(KeyInfo {
+                                rawkey,
+                                keysym,
+                                state: keystate,
+                                utf8: utf8.clone(),
+                                time,
+                                serial,
+                            });
+                        }
+                    }
+                    KeyState::Released => {
+                        repeat.abort();
+                    }
+                };
                 event_queue.queue_event(KeyboardEvent::Key {
                     rawkey,
                     keysym,
@@ -150,4 +171,123 @@ pub enum KeyboardEvent {
         /// current state of the modifiers
         modifiers: ModifiersState,
     },
+}
+
+/// Keyboard repeat handler
+pub struct Repeat {
+    rate: u32,
+    delay: u32,
+    key_held: bool,
+    event_queue: SeatEventSource<KeyboardEvent>,
+    kill_chan: Arc<Mutex<(Sender<()>, Receiver<()>)>>,
+}
+
+impl Repeat {
+    /// Creates a new `Repeat`
+    pub fn new(event_queue: SeatEventSource<KeyboardEvent>) -> Self {
+        Repeat {
+            rate: 0,
+            delay: 0,
+            event_queue,
+            key_held: false,
+            kill_chan: Arc::new(Mutex::new(channel::<()>())),
+        }
+    }
+
+    /// Sets the repeat rate and delay
+    pub fn set_info(&mut self, rate: u32, delay: u32) {
+        self.rate = rate;
+        self.delay = delay;
+    }
+
+    /// Start the key repeat timer loop
+    pub fn start(&mut self, mut key: KeyInfo) {
+        // If a key is being held then kill its repeat thread
+        self.abort();
+        self.key_held = true;
+
+        if self.rate == 0 || self.delay == 0 {
+            return;
+        }
+
+        // Clone variables for the thread
+        let event_queue = self.event_queue.clone();
+        let thread_kill_chan = self.kill_chan.clone();
+        let rate = self.rate;
+        let delay = self.delay;
+
+        // Start new key repeat thread
+        thread::spawn(move || {
+            let time_tracker = Instant::now();
+            // Delay
+            thread::sleep(Duration::from_millis(delay as _));
+            match thread_kill_chan.lock().unwrap().1.try_recv() {
+                Ok(_) | Err(TryRecvError::Disconnected) => return,
+                _ => {}
+            }
+            loop {
+                let elapsed_time = time_tracker.elapsed();
+                key.time += elapsed_time.as_secs() as u32 * 1000
+                    + elapsed_time.subsec_nanos() / 1_000_000;
+
+                let mut release_event = key.clone();
+                release_event.state = KeyState::Released;
+                release_event.utf8 = None;
+                event_queue.queue_event(release_event.into());
+
+                let mut press_event = key.clone();
+                press_event.state = KeyState::Pressed;
+                event_queue.queue_event(press_event.into());
+
+                // Rate
+                thread::sleep(Duration::from_millis(rate as _));
+                match thread_kill_chan.lock().unwrap().1.try_recv() {
+                    Ok(_) | Err(TryRecvError::Disconnected) => {
+                        break
+                    }
+                    _ => {}
+                }
+            }
+        });
+    }
+
+    /// Abort previous key repeat thread
+    pub fn abort(&mut self) {
+        if self.key_held {
+            self.kill_chan.lock().unwrap().0.send(()).unwrap();
+            self.key_held = false;
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+/// A key event occurred
+pub struct KeyInfo {
+    /// serial number of the event
+    serial: u32,
+    /// time at which the keypress occurred
+    time: u32,
+    /// raw value of the key
+    rawkey: u32,
+    /// interpreted symbol of the key
+    keysym: Keysym,
+    /// new state of the key
+    state: KeyState,
+    /// utf8 interpretation of the entered text
+    ///
+    /// will always be `None` on key release events
+    utf8: Option<String>,
+}
+
+impl Into<KeyboardEvent> for KeyInfo {
+    fn into(self) -> KeyboardEvent {
+        KeyboardEvent::Key {
+            serial: self.serial,
+            time: self.time,
+            rawkey: self.rawkey,
+            keysym: self.keysym,
+            state: self.state,
+            utf8: self.utf8,
+        }
+    }
 }

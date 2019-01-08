@@ -20,7 +20,6 @@ pub struct KeyboardState {
     state: Option<State>,
     _compose_table: ComposeTable,
     compose_state: ComposeState,
-    repeat_info: Option<RepeatInfo>,
 }
 
 impl KeyboardState {
@@ -41,7 +40,6 @@ impl KeyboardState {
             state: None,
             _compose_table: compose_table,
             compose_state,
-            repeat_info: None,
         }
     }
 
@@ -58,11 +56,6 @@ impl KeyboardState {
         let state = State::new(&keymap);
         self.keymap = Some(keymap);
         self.state = Some(state);
-    }
-
-    /// Sets the keyboard repeat rate and delay
-    pub fn set_repeat_info(&mut self, rate: u32, delay: u32) {
-        self.repeat_info = Some(RepeatInfo::new(rate, delay));
     }
 
     /// Updates the keyboard modifiers
@@ -97,6 +90,11 @@ impl KeyboardState {
         } else {
             Some(utf8)
         }
+    }
+
+    /// Determine whether a key should repeat or not
+    pub fn key_repeats(&self, rawkey: Keycode) -> bool {
+        self.keymap.as_ref().unwrap().key_repeats(rawkey + 8)
     }
 
     /// Feeds the compose state machine
@@ -153,16 +151,5 @@ impl ModifiersState {
             num_lock: state
                 .mod_name_is_active(&MOD_NAME_NUM, STATE_MODS_EFFECTIVE),
         }
-    }
-}
-
-struct RepeatInfo {
-    rate: u32,
-    delay: u32,
-}
-
-impl RepeatInfo {
-    pub fn new(rate: u32, delay: u32) -> Self {
-        RepeatInfo { rate, delay }
     }
 }

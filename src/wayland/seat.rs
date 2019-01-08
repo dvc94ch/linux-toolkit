@@ -383,10 +383,11 @@ pub enum SeatEvent {
     },
 }
 
+#[derive(Clone)]
 /// Seat event source specialized for different seat devices
 pub struct SeatEventSource<T> {
     seat_id: u32,
-    event_source: Option<EventSource<SurfaceEvent>>,
+    event_source: Arc<Mutex<Option<EventSource<SurfaceEvent>>>>,
     _type: PhantomData<T>,
 }
 
@@ -395,19 +396,23 @@ impl<T> SeatEventSource<T> {
     pub fn new(seat_id: u32) -> Self {
         SeatEventSource {
             seat_id,
-            event_source: None,
+            event_source: Arc::new(Mutex::new(None)),
             _type: PhantomData,
         }
     }
 
     /// The seat device entered a surface
     pub fn enter_surface(&mut self, surface: &Proxy<WlSurface>) {
-        let surface_user_data = surface
-            .user_data::<Mutex<SurfaceUserData>>()
-            .unwrap()
-            .lock()
-            .unwrap();
-        self.event_source = Some(surface_user_data.event_source.clone());
+        let new_event_source = {
+            let surface_user_data = surface
+                .user_data::<Mutex<SurfaceUserData>>()
+                .unwrap()
+                .lock()
+                .unwrap();
+            surface_user_data.event_source.clone()
+        };
+        let mut event_source = self.event_source.lock().unwrap();
+        *event_source = Some(new_event_source);
     }
 
     fn _queue_event(&self, event: SeatEvent) {
@@ -415,7 +420,10 @@ impl<T> SeatEventSource<T> {
             seat_id: self.seat_id,
             event,
         };
-        self.event_source.as_ref().unwrap().push_event(event);
+        let event_source = self.event_source.lock().unwrap();
+        if event_source.is_some() {
+            event_source.as_ref().unwrap().push_event(event);
+        }
     }
 }
 
