@@ -79,7 +79,7 @@ impl SeatManager {
                             Event::Capabilities { capabilities } => {
                                 if capabilities.contains(Capability::Pointer) {
                                     user_data
-                                        .impl_pointer(&seat, &cursor_manager);
+                                        .impl_pointer(&seat);
                                 } else {
                                     user_data.drop_pointer();
                                 }
@@ -96,7 +96,7 @@ impl SeatManager {
                             }
                         }
                     },
-                    Mutex::new(SeatUserData::new()),
+                    Mutex::new(SeatUserData::new(cursor_manager.clone())),
                 )
             })
             .unwrap();
@@ -178,6 +178,7 @@ impl SeatManager {
 /// Compiled information about a seat
 pub struct SeatUserData {
     name: String,
+    cursor_manager: CursorManager,
     pointer: Option<Proxy<WlPointer>>,
     cursor: Option<Cursor>,
     keyboard: Option<Proxy<WlKeyboard>>,
@@ -187,9 +188,10 @@ pub struct SeatUserData {
 
 impl SeatUserData {
     /// Creates a new `SeatUserData`
-    pub fn new() -> Self {
+    pub fn new(cursor_manager: CursorManager) -> Self {
         SeatUserData {
             name: String::new(),
+            cursor_manager,
             pointer: None,
             cursor: None,
             keyboard: None,
@@ -206,10 +208,9 @@ impl SeatUserData {
     fn impl_pointer(
         &mut self,
         seat: &Proxy<WlSeat>,
-        cursor_manager: &CursorManager,
     ) {
         if self.pointer.is_none() {
-            let cursor = cursor_manager.new_cursor(None);
+            let cursor = self.cursor_manager.new_cursor(None);
             self.pointer = {
                 let cursor = cursor.clone();
                 seat
@@ -247,8 +248,8 @@ impl SeatUserData {
             }
         }
         if self.cursor.is_some() {
-            let cursor = self.cursor.take();
-            self.cursor_manager.remove_cursor(cursor);
+            let cursor = self.cursor.take().unwrap();
+            self.cursor_manager.remove_cursor(&cursor);
         }
     }
 
