@@ -76,7 +76,8 @@ impl XdgShell {
                             let width = width as u32;
                             let height = height as u32;
                             let size = if width == 0 || height == 0 {
-                                // if either w or h is zero, then we get to choose our size
+                                // if either w or h is zero, then we get to
+                                // choose our size
                                 None
                             } else {
                                 Some((width, height))
@@ -160,6 +161,16 @@ impl XdgShellSurface {
         self.event_drain.poll_events(|event| {
             cb(event, self);
         });
+    }
+
+    /// Set the app id
+    pub fn set_app_id(&self, app_id: String) {
+        self.xdg_toplevel.set_app_id(app_id);
+    }
+
+    /// Set the title
+    pub fn set_title(&self, title: String) {
+        self.xdg_toplevel.set_title(title);
     }
 }
 

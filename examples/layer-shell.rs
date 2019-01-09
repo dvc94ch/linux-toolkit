@@ -1,29 +1,21 @@
 use byteorder::{NativeEndian, WriteBytesExt};
 use linux_toolkit::wayland::data_device::DataDeviceEvent;
 use linux_toolkit::wayland::environment::Environment;
-use linux_toolkit::wayland::layer_shell::{
-    Layer, LayerShell, LayerSurfaceEvent, Layout,
-};
+use linux_toolkit::wayland::layer_shell::{Layer, LayerShell, LayerSurfaceEvent, Layout};
 use linux_toolkit::wayland::mem_pool::{DoubleMemPool, MemPool};
 use linux_toolkit::wayland::pointer::PointerEvent;
 use linux_toolkit::wayland::seat::SeatEvent;
 use linux_toolkit::wayland::shm::Format;
 use linux_toolkit::wayland::surface::{SurfaceRequests, WlSurface};
-use linux_toolkit::wayland::toplevel_manager::{
-    ToplevelEvent, ToplevelManager,
-};
+use linux_toolkit::wayland::toplevel_manager::{ToplevelManager, ToplevelEvent};
 use linux_toolkit::wayland::Proxy;
 use std::io::{BufWriter, Error, Seek, SeekFrom, Write};
 
 fn main() {
     let mut environment = Environment::initialize(None).unwrap();
     let mut pools = DoubleMemPool::new(&environment.shm, || {}).unwrap();
-    let layer_shell = LayerShell::new(
-        &environment.globals,
-        environment.surface_manager.clone(),
-    );
-    let output = environment
-        .output_manager
+    let layer_shell = LayerShell::new(&environment.globals, environment.surface_manager.clone());
+    let output = environment.output_manager
         .outputs()
         .lock()
         .unwrap()
@@ -36,7 +28,7 @@ fn main() {
         Layout::BarBottom { height: 30 },
         "bottom-bar".to_string(),
     );
-    let toplevel_manager = ToplevelManager::new(&environment.globals);
+    let toplevel_manager = ToplevelManager::new(&environment.globals).unwrap();
 
     let mut close = false;
     let mut configure = false;
@@ -82,13 +74,16 @@ fn main() {
                 println!("{:?}", event);
             }
         });
-        /*toplevel_manager.poll_events(|event| match event {
-            ToplevelEvent::Done => {
-                //println!("app_id: {} title: {}",
-                //         user_data.app_id(),
-                //         user_data.title());
+        toplevel_manager.poll_events(|event, toplevel| match event {
+            ToplevelEvent::Configure => {
+                println!("{}: title: {}",
+                         toplevel.app_id(),
+                         toplevel.title());
             }
-        });*/
+            ToplevelEvent::Closed => {
+                println!("{}: Closed", toplevel.app_id());
+            }
+        });
         if close {
             break;
         }

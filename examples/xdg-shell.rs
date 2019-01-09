@@ -23,6 +23,9 @@ fn main() {
         environment.surface_manager.clone(),
     );
     let xdg_surface = xdg_shell.create_shell_surface();
+    xdg_surface.set_app_id("com.example.XdgShellExample".into());
+    xdg_surface.set_title("XdgShellExample".into());
+
     let mut clipboard = Clipboard::new(
         environment.seat_manager.clone(),
         environment.data_source_manager.clone(),
