@@ -167,8 +167,6 @@ pub struct PointerUserData {
 impl PointerUserData {
     /// Creates a new `PointerUserData`
     pub fn new(cursor: Cursor) -> Self {
-        PointerUserData {
-            cursor,
-        }
+        PointerUserData { cursor }
     }
 }

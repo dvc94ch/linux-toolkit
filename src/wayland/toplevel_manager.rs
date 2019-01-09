@@ -2,13 +2,13 @@
 use crate::wayland::event_queue::{EventDrain, EventQueue};
 use std::sync::{Arc, Mutex};
 use wayland_client::{GlobalManager, Proxy};
-pub use wayland_protocols::wlr::unstable::foreign_toplevel::v1::client::{
-    zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1,
-    zwlr_foreign_toplevel_handle_v1::{ZwlrForeignToplevelHandleV1, State},
-};
 use wayland_protocols::wlr::unstable::foreign_toplevel::v1::client::{
-    zwlr_foreign_toplevel_manager_v1::Event as ManagerEvent,
     zwlr_foreign_toplevel_handle_v1::Event,
+    zwlr_foreign_toplevel_manager_v1::Event as ManagerEvent,
+};
+pub use wayland_protocols::wlr::unstable::foreign_toplevel::v1::client::{
+    zwlr_foreign_toplevel_handle_v1::{State, ZwlrForeignToplevelHandleV1},
+    zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1,
 };
 
 /// The toplevel manager
@@ -22,10 +22,12 @@ impl ToplevelManager {
     /// Creates a new `ToplevelManager`
     pub fn new(globals: &GlobalManager) -> Result<Self, ()> {
         let toplevels = Arc::new(Mutex::new(Vec::<Toplevel>::new()));
-        let manager = {
-            let toplevels = toplevels.clone();
-            globals.instantiate_auto(move |manager| {
-                manager.implement(move |event, _manager| match event {
+        let manager =
+            {
+                let toplevels = toplevels.clone();
+                globals
+                    .instantiate_auto(move |manager| {
+                        manager.implement(move |event, _manager| match event {
                     ManagerEvent::Toplevel { toplevel } => {
                         let (source, drain) = EventQueue::new();
                         let toplevel = toplevel.implement(move |event, handle| {
@@ -85,12 +87,10 @@ impl ToplevelManager {
                     },
                     _ => {},
                 }, ())
-            }).map_err(|_| ())?
-        };
-        Ok(ToplevelManager {
-            manager,
-            toplevels,
-        })
+                    })
+                    .map_err(|_| ())?
+            };
+        Ok(ToplevelManager { manager, toplevels })
     }
 
     /// A list of all current toplevels
@@ -121,9 +121,7 @@ impl ToplevelManager {
     ) {
         let mut toplevels = self.toplevels.lock().unwrap();
         toplevels.retain(|toplevel| {
-            toplevel.poll_events(|event| {
-                handler(event, toplevel.clone())
-            });
+            toplevel.poll_events(|event| handler(event, toplevel.clone()));
             !toplevel.closed()
         });
     }
@@ -170,10 +168,7 @@ impl Toplevel {
         proxy: Proxy<ZwlrForeignToplevelHandleV1>,
         drain: EventDrain<ToplevelEvent>,
     ) -> Self {
-        Toplevel {
-            proxy,
-            drain,
-        }
+        Toplevel { proxy, drain }
     }
 
     /// The proxy

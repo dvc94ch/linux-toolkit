@@ -78,8 +78,7 @@ impl SeatManager {
                             }
                             Event::Capabilities { capabilities } => {
                                 if capabilities.contains(Capability::Pointer) {
-                                    user_data
-                                        .impl_pointer(&seat);
+                                    user_data.impl_pointer(&seat);
                                 } else {
                                     user_data.drop_pointer();
                                 }
@@ -205,24 +204,16 @@ impl SeatUserData {
         &self.name[..]
     }
 
-    fn impl_pointer(
-        &mut self,
-        seat: &Proxy<WlSeat>,
-    ) {
+    fn impl_pointer(&mut self, seat: &Proxy<WlSeat>) {
         if self.pointer.is_none() {
             let cursor = self.cursor_manager.new_cursor(None);
             self.pointer = {
                 let cursor = cursor.clone();
-                seat
-                    .get_pointer(move |pointer| {
-                        let event_queue = SeatEventSource::new(seat.id());
-                        implement_pointer(
-                            pointer,
-                            event_queue,
-                            cursor,
-                        )
-                    })
-                    .ok()
+                seat.get_pointer(move |pointer| {
+                    let event_queue = SeatEventSource::new(seat.id());
+                    implement_pointer(pointer, event_queue, cursor)
+                })
+                .ok()
             };
             if self.pointer.is_some() {
                 self.cursor = Some(cursor);

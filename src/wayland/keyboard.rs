@@ -1,11 +1,11 @@
 //! Keyboard handling
 use crate::wayland::seat::SeatEventSource;
 use crate::wayland::xkbcommon::KeyboardState;
-use std::sync::{Arc, Mutex};
+pub use crate::wayland::xkbcommon::{Keycode, Keysym, ModifiersState};
 use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-pub use crate::wayland::xkbcommon::{Keycode, Keysym, ModifiersState};
 use wayland_client::protocol::wl_keyboard::Event;
 pub use wayland_client::protocol::wl_keyboard::KeyState;
 use wayland_client::protocol::wl_keyboard::KeymapFormat;
@@ -242,9 +242,7 @@ impl Repeat {
                 // Rate
                 thread::sleep(Duration::from_millis(rate as _));
                 match thread_kill_chan.lock().unwrap().1.try_recv() {
-                    Ok(_) | Err(TryRecvError::Disconnected) => {
-                        break
-                    }
+                    Ok(_) | Err(TryRecvError::Disconnected) => break,
                     _ => {}
                 }
             }
