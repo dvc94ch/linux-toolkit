@@ -230,10 +230,15 @@ impl CursorManager {
         shm: Proxy<WlShm>,
         theme_name: Option<String>,
     ) -> Self {
+        let theme = CursorTheme::new(
+            &shm,
+            theme_name.as_ref(),
+            1,
+        ).ok();
         CursorManager {
             cursors: Arc::new(Mutex::new(Vec::new())),
             event_drain,
-            theme: Arc::new(Mutex::new(None)),
+            theme: Arc::new(Mutex::new(theme)),
             theme_name,
             scale_factor: 1,
             output_manager,
