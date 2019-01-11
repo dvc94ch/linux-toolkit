@@ -11,14 +11,13 @@ nix = "*"
 rand = "*"
 
 [dependencies.wayland-client]
-version = "*"
+version = "0.21"
 features = ["cursor", "dlopen", "native_lib"]
 
 [dependencies.wayland-protocols]
-version = "*"
+version = "0.21"
 features = ["native_client", "unstable_protocols"]
 
 [dependencies.xkbcommon]
-version = "*"
-path = "../xkbcommon-rs"
-features = ["compose", "wayland"]
+version = "0.4"
+features = ["wayland"]
