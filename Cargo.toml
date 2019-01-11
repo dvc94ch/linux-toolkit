@@ -12,10 +12,12 @@ rand = "*"
 
 [dependencies.wayland-client]
 version = "0.21"
+git = "https://github.com/smithay/wayland-rs"
 features = ["cursor", "dlopen", "native_lib"]
 
 [dependencies.wayland-protocols]
 version = "0.21"
+git = "https://github.com/smithay/wayland-rs"
 features = ["native_client", "unstable_protocols"]
 
 [dependencies.xkbcommon]
