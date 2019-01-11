@@ -48,6 +48,7 @@ pub fn implement_pointer(
                 time,
                 serial,
             } => {
+                let button = MouseButton::from(button);
                 event_queue.queue_event(PointerEvent::Button {
                     button,
                     state,
@@ -88,6 +89,30 @@ pub fn implement_pointer(
     )
 }
 
+#[derive(Clone, Copy, Debug)]
+/// Mouse button
+pub enum MouseButton {
+    /// Left mouse button
+    Left,
+    /// Right mouse button
+    Right,
+    /// Middle mouse button
+    Middle,
+    /// Other mouse button
+    Other(u8),
+}
+
+impl From<u32> for MouseButton {
+    fn from(button: u32) -> MouseButton {
+        match button - 0x110 {
+            0 => MouseButton::Left,
+            1 => MouseButton::Right,
+            2 => MouseButton::Middle,
+            i => MouseButton::Other(i as u8)
+        }
+    }
+}
+
 /// Possible events generated from a `wl_pointer` device
 #[derive(Clone, Debug)]
 pub enum PointerEvent {
@@ -110,7 +135,7 @@ pub enum PointerEvent {
     /// A mouse button was pressed or released
     Button {
         /// The button that was pressed
-        button: u32,
+        button: MouseButton,
         /// The state of the button
         state: ButtonState,
         /// The time of this event
